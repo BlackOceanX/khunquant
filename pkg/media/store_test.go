@@ -528,3 +528,13 @@ func TestRefToScopeConsistency(t *testing.T) {
 		t.Error("refToScope should still contain ref3")
 	}
 }
+
+func TestTempDir_ReturnsNonEmpty(t *testing.T) {
+	dir := TempDir()
+	if dir == "" {
+		t.Fatal("TempDir() returned empty string")
+	}
+	if !strings.HasSuffix(dir, TempDirName) {
+		t.Errorf("TempDir() = %q, want suffix %q", dir, TempDirName)
+	}
+}

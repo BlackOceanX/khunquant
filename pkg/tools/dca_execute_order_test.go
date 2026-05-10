@@ -72,7 +72,8 @@ func TestExecuteDCAOrder_GuardrailExceeded(t *testing.T) {
 	}
 
 	// Insert one execution in the current day to trip the guardrail.
-	now := time.Now().UTC()
+	// Use local time so CountExecutionsInPeriod's local-midnight "since" string-compares correctly.
+	now := time.Now()
 	exec := &dca.Execution{
 		PlanID:      planID,
 		ExecutedAt:  now,
@@ -113,4 +114,60 @@ func TestSplit(t *testing.T) {
 			t.Errorf("split(%q) = %q, want %q", tc.symbol, got, tc.want)
 		}
 	}
+}
+
+func TestExecuteDCAOrderTool_Name(t *testing.T) {
+	tool := NewExecuteDCAOrderTool(config.DefaultConfig(), newTestDCAStore(t))
+	if tool.Name() != NameExecuteDCAOrder {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameExecuteDCAOrder)
+	}
+}
+
+func TestExecuteDCAOrderTool_Description(t *testing.T) {
+	tool := NewExecuteDCAOrderTool(config.DefaultConfig(), newTestDCAStore(t))
+	desc := tool.Description()
+	if desc == "" {
+		t.Fatal("Description() should not be empty")
+	}
+	if !containsStr(desc, "order") && !containsStr(desc, "Order") {
+		t.Errorf("Description should mention orders, got: %s", desc)
+	}
+}
+
+func TestExecuteDCAOrderTool_Parameters(t *testing.T) {
+	tool := NewExecuteDCAOrderTool(config.DefaultConfig(), newTestDCAStore(t))
+	params := tool.Parameters()
+
+	if params == nil {
+		t.Fatal("Parameters() should not return nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("type should be 'object', got %q", params["type"])
+	}
+
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties to be a map")
+	}
+
+	if _, ok := props["plan_id"]; !ok {
+		t.Error("expected property 'plan_id' in Parameters")
+	}
+
+	required, ok := params["required"].([]string)
+	if !ok {
+		t.Fatal("required should be a slice")
+	}
+	if len(required) == 0 || required[0] != "plan_id" {
+		t.Errorf("plan_id should be required, got %v", required)
+	}
+}
+
+func containsStr(s, substr string) bool {
+	for i := 0; i < len(s)-len(substr)+1; i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

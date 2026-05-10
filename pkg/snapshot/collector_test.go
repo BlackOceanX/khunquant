@@ -144,3 +144,95 @@ func TestEffectiveQuote_EmptyQuoteList(t *testing.T) {
 		t.Errorf("expected USDT when quote list empty, got %q", got)
 	}
 }
+
+func TestListExchangeAccounts_BinanceTH(t *testing.T) {
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			BinanceTH: config.BinanceTHExchangeConfig{
+				Enabled:  true,
+				Accounts: []config.ExchangeAccount{{Name: "th-main"}},
+			},
+		},
+	}
+	result := listExchangeAccounts(cfg)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(result))
+	}
+	if result[0].exchange != "binanceth" || result[0].account != "th-main" {
+		t.Errorf("unexpected account: %+v", result[0])
+	}
+}
+
+func TestListExchangeAccounts_OKX(t *testing.T) {
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			OKX: config.OKXExchangeConfig{
+				Enabled:  true,
+				Accounts: []config.OKXExchangeAccount{{ExchangeAccount: config.ExchangeAccount{Name: "okx-main"}}},
+			},
+		},
+	}
+	result := listExchangeAccounts(cfg)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(result))
+	}
+	if result[0].exchange != "okx" || result[0].account != "okx-main" {
+		t.Errorf("unexpected account: %+v", result[0])
+	}
+}
+
+func TestListExchangeAccounts_Settrade(t *testing.T) {
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			Settrade: config.SettradeExchangeConfig{
+				Enabled:  true,
+				Accounts: []config.SettradeExchangeAccount{{ExchangeAccount: config.ExchangeAccount{Name: "st-main"}}},
+			},
+		},
+	}
+	result := listExchangeAccounts(cfg)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(result))
+	}
+	if result[0].exchange != "settrade" || result[0].account != "st-main" {
+		t.Errorf("unexpected account: %+v", result[0])
+	}
+}
+
+func TestCollectFromExchanges_NoAccounts(t *testing.T) {
+	cfg := &config.Config{}
+	_, err := CollectFromExchanges(context.Background(), cfg, CollectOptions{})
+	if err == nil {
+		t.Error("CollectFromExchanges with no accounts should return error")
+	}
+}
+
+func TestCollectFromExchanges_SourceFilterNoMatch(t *testing.T) {
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			Binance: config.BinanceExchangeConfig{
+				Enabled:  true,
+				Accounts: []config.ExchangeAccount{{Name: "main"}},
+			},
+		},
+	}
+	_, err := CollectFromExchanges(context.Background(), cfg, CollectOptions{Source: "nonexistent-exchange"})
+	if err == nil {
+		t.Error("CollectFromExchanges with unmatched source filter should return error")
+	}
+}
+
+func TestCollectFromExchanges_SourceFilterAccountMismatch(t *testing.T) {
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			Binance: config.BinanceExchangeConfig{
+				Enabled:  true,
+				Accounts: []config.ExchangeAccount{{Name: "main"}},
+			},
+		},
+	}
+	_, err := CollectFromExchanges(context.Background(), cfg, CollectOptions{Source: "binance", Account: "nonexistent"})
+	if err == nil {
+		t.Error("CollectFromExchanges with unmatched account filter should return error")
+	}
+}

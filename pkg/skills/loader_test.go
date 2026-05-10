@@ -417,3 +417,127 @@ func TestGetSkillMetadata_IgnoresHTMLCommentBlocks(t *testing.T) {
 	assert.Equal(t, "biomed-skill", meta.Name)
 	assert.Equal(t, "Summarize biomedical papers.", meta.Description)
 }
+
+func TestLoadSkill_Found(t *testing.T) {
+	tmp := t.TempDir()
+	ws := filepath.Join(tmp, "workspace")
+	global := filepath.Join(tmp, "global")
+
+	createSkillDir(t, filepath.Join(ws, "skills"), "my-skill", "my-skill", "desc")
+
+	sl := NewSkillsLoader(ws, global, "")
+	content, ok := sl.LoadSkill("my-skill")
+	require.True(t, ok, "LoadSkill should find workspace skill")
+	require.NotEmpty(t, content)
+}
+
+func TestLoadSkill_NotFound(t *testing.T) {
+	tmp := t.TempDir()
+	sl := NewSkillsLoader(tmp, "", "")
+	_, ok := sl.LoadSkill("nonexistent-skill")
+	assert.False(t, ok)
+}
+
+func TestLoadSkill_FallsBackToGlobal(t *testing.T) {
+	tmp := t.TempDir()
+	ws := filepath.Join(tmp, "workspace")
+	global := filepath.Join(tmp, "global")
+
+	createSkillDir(t, global, "global-skill", "global-skill", "from global")
+
+	sl := NewSkillsLoader(ws, global, "")
+	content, ok := sl.LoadSkill("global-skill")
+	require.True(t, ok, "LoadSkill should find global skill")
+	require.NotEmpty(t, content)
+}
+
+func TestLoadSkillsForContext_Empty(t *testing.T) {
+	sl := NewSkillsLoader("", "", "")
+	got := sl.LoadSkillsForContext(nil)
+	assert.Empty(t, got)
+}
+
+func TestLoadSkillsForContext_SkipsNotFound(t *testing.T) {
+	sl := NewSkillsLoader("", "", "")
+	got := sl.LoadSkillsForContext([]string{"missing-skill"})
+	assert.Empty(t, got)
+}
+
+func TestLoadSkillsForContext_BuildsContent(t *testing.T) {
+	tmp := t.TempDir()
+	ws := filepath.Join(tmp, "workspace")
+	global := filepath.Join(tmp, "global")
+	createSkillDir(t, filepath.Join(ws, "skills"), "skill-a", "skill-a", "desc a")
+	createSkillDir(t, filepath.Join(ws, "skills"), "skill-b", "skill-b", "desc b")
+
+	sl := NewSkillsLoader(ws, global, "")
+	got := sl.LoadSkillsForContext([]string{"skill-a", "skill-b"})
+	require.NotEmpty(t, got)
+	require.Contains(t, got, "skill-a")
+	require.Contains(t, got, "skill-b")
+}
+
+func TestBuildSkillsFullContent_Empty(t *testing.T) {
+	sl := NewSkillsLoader("", "", "")
+	got := sl.BuildSkillsFullContent()
+	assert.Empty(t, got)
+}
+
+func TestBuildSkillsFullContent_WithSkills(t *testing.T) {
+	tmp := t.TempDir()
+	ws := filepath.Join(tmp, "workspace")
+	createSkillDir(t, filepath.Join(ws, "skills"), "test-skill", "test-skill", "A test skill")
+
+	sl := NewSkillsLoader(ws, "", "")
+	got := sl.BuildSkillsFullContent()
+	require.NotEmpty(t, got)
+	require.Contains(t, got, "test-skill")
+}
+
+func TestBuildSkillsSummary_Empty(t *testing.T) {
+	sl := NewSkillsLoader("", "", "")
+	got := sl.BuildSkillsSummary()
+	assert.Empty(t, got)
+}
+
+func TestBuildSkillsSummary_WithSkills(t *testing.T) {
+	tmp := t.TempDir()
+	ws := filepath.Join(tmp, "workspace")
+	createSkillDir(t, filepath.Join(ws, "skills"), "my-skill", "my-skill", "My skill description")
+
+	sl := NewSkillsLoader(ws, "", "")
+	got := sl.BuildSkillsSummary()
+	require.NotEmpty(t, got)
+	require.Contains(t, got, "<skills>")
+	require.Contains(t, got, "my-skill")
+	require.Contains(t, got, "</skills>")
+}
+
+func TestBuildSkillsSummary_EscapesXML(t *testing.T) {
+	tmp := t.TempDir()
+	ws := filepath.Join(tmp, "workspace")
+	skillDir := filepath.Join(ws, "skills", "xml-skill")
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+	content := "---\nname: xml-skill\ndescription: A & B <test>\n---\n\n# xml-skill"
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644))
+
+	sl := NewSkillsLoader(ws, "", "")
+	got := sl.BuildSkillsSummary()
+	require.Contains(t, got, "&amp;")
+	require.Contains(t, got, "&lt;")
+}
+
+func TestEscapeXML(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"hello", "hello"},
+		{"a & b", "a &amp; b"},
+		{"<tag>", "&lt;tag&gt;"},
+		{"a & <b>", "a &amp; &lt;b&gt;"},
+	}
+	for _, c := range cases {
+		got := escapeXML(c.in)
+		if got != c.want {
+			t.Errorf("escapeXML(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

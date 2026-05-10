@@ -435,3 +435,103 @@ func TestEditFileTool_Restricted_FileNotFound(t *testing.T) {
 	assert.True(t, result.IsError)
 	assert.Contains(t, result.ForLLM, "not found")
 }
+
+func TestEditFileTool_Name(t *testing.T) {
+	tool := NewEditFileTool(t.TempDir(), true)
+	if tool.Name() != NameEditFile {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameEditFile)
+	}
+}
+
+func TestEditFileTool_Description(t *testing.T) {
+	tool := NewEditFileTool(t.TempDir(), true)
+	desc := tool.Description()
+	if desc == "" {
+		t.Fatal("Description() should not be empty")
+	}
+	if !strings.Contains(desc, "Edit") && !strings.Contains(desc, "replace") {
+		t.Errorf("Description should mention editing or replacing, got: %s", desc)
+	}
+}
+
+func TestEditFileTool_Parameters(t *testing.T) {
+	tool := NewEditFileTool(t.TempDir(), true)
+	params := tool.Parameters()
+
+	if params == nil {
+		t.Fatal("Parameters() should not return nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("type should be 'object', got %q", params["type"])
+	}
+
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties to be a map")
+	}
+
+	expectedProps := []string{"path", "old_text", "new_text"}
+	for _, prop := range expectedProps {
+		if _, ok := props[prop]; !ok {
+			t.Errorf("expected property %q in Parameters", prop)
+		}
+	}
+
+	required, ok := params["required"].([]string)
+	if !ok {
+		t.Fatal("required should be a slice")
+	}
+	if len(required) != 3 {
+		t.Errorf("expected 3 required fields, got %d", len(required))
+	}
+}
+
+func TestAppendFileTool_Name(t *testing.T) {
+	tool := NewAppendFileTool(t.TempDir(), true)
+	if tool.Name() != NameAppendFile {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameAppendFile)
+	}
+}
+
+func TestAppendFileTool_Description(t *testing.T) {
+	tool := NewAppendFileTool(t.TempDir(), true)
+	desc := tool.Description()
+	if desc == "" {
+		t.Fatal("Description() should not be empty")
+	}
+	if !strings.Contains(desc, "append") && !strings.Contains(desc, "Append") {
+		t.Errorf("Description should mention appending, got: %s", desc)
+	}
+}
+
+func TestAppendFileTool_Parameters(t *testing.T) {
+	tool := NewAppendFileTool(t.TempDir(), true)
+	params := tool.Parameters()
+
+	if params == nil {
+		t.Fatal("Parameters() should not return nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("type should be 'object', got %q", params["type"])
+	}
+
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties to be a map")
+	}
+
+	expectedProps := []string{"path", "content"}
+	for _, prop := range expectedProps {
+		if _, ok := props[prop]; !ok {
+			t.Errorf("expected property %q in Parameters", prop)
+		}
+	}
+
+	required, ok := params["required"].([]string)
+	if !ok {
+		t.Fatal("required should be a slice")
+	}
+	if len(required) != 2 {
+		t.Errorf("expected 2 required fields, got %d", len(required))
+	}
+}

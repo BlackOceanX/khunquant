@@ -428,3 +428,308 @@ func TestCronTool_AddJobAcceptsValidTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestCronTool_Name(t *testing.T) {
+	tool := newTestCronTool(t)
+	if tool.Name() != NameCron {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameCron)
+	}
+}
+
+func TestCronTool_Description(t *testing.T) {
+	tool := newTestCronTool(t)
+	desc := tool.Description()
+	if desc == "" {
+		t.Fatal("Description() should not be empty")
+	}
+	if !strings.Contains(desc, "Schedule") {
+		t.Errorf("Description should mention scheduling, got: %s", desc)
+	}
+}
+
+func TestCronTool_Parameters(t *testing.T) {
+	tool := newTestCronTool(t)
+	params := tool.Parameters()
+
+	if params == nil {
+		t.Fatal("Parameters() should not return nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("type should be 'object', got %q", params["type"])
+	}
+
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties to be a map")
+	}
+
+	expectedProps := []string{"action", "message", "command", "at_seconds", "every_seconds", "cron_expr", "job_id"}
+	for _, prop := range expectedProps {
+		if _, ok := props[prop]; !ok {
+			t.Errorf("expected property %q in Parameters", prop)
+		}
+	}
+
+	required, ok := params["required"].([]string)
+	if !ok {
+		t.Fatal("required should be a slice")
+	}
+	if len(required) == 0 || required[0] != "action" {
+		t.Errorf("action should be required, got %v", required)
+	}
+}
+
+func TestCronTool_ListJobs_Empty(t *testing.T) {
+	tool := newTestCronTool(t)
+	result := tool.Execute(context.Background(), map[string]any{
+		"action": "list",
+	})
+
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.ForLLM)
+	}
+	if !strings.Contains(result.ForLLM, "No scheduled jobs") {
+		t.Errorf("expected 'No scheduled jobs', got: %s", result.ForLLM)
+	}
+}
+
+func TestCronTool_ListJobs_WithJobs(t *testing.T) {
+	tool := newTestCronTool(t)
+	ctx := WithToolContext(context.Background(), "cli", "direct")
+
+	// Add a job
+	addResult := tool.Execute(ctx, map[string]any{
+		"action":     "add",
+		"message":    "test reminder",
+		"at_seconds": float64(60),
+	})
+	if addResult.IsError {
+		t.Fatalf("failed to add job: %s", addResult.ForLLM)
+	}
+
+	// List jobs
+	listResult := tool.Execute(context.Background(), map[string]any{
+		"action": "list",
+	})
+
+	if listResult.IsError {
+		t.Fatalf("unexpected error: %s", listResult.ForLLM)
+	}
+	if !strings.Contains(listResult.ForLLM, "Scheduled jobs") {
+		t.Errorf("expected 'Scheduled jobs' in list, got: %s", listResult.ForLLM)
+	}
+	if !strings.Contains(listResult.ForLLM, "test reminder") {
+		t.Errorf("expected job name in list, got: %s", listResult.ForLLM)
+	}
+}
+
+func TestCronTool_ListJobs_ShowsScheduleInfo(t *testing.T) {
+	tool := newTestCronTool(t)
+	ctx := WithToolContext(context.Background(), "cli", "direct")
+
+	// Add a recurring job
+	addResult := tool.Execute(ctx, map[string]any{
+		"action":       "add",
+		"message":      "recurring task",
+		"every_seconds": float64(3600),
+	})
+	if addResult.IsError {
+		t.Fatalf("failed to add job: %s", addResult.ForLLM)
+	}
+
+	// List jobs
+	listResult := tool.Execute(context.Background(), map[string]any{
+		"action": "list",
+	})
+
+	if listResult.IsError {
+		t.Fatalf("unexpected error: %s", listResult.ForLLM)
+	}
+	// Should show schedule info like "every 3600s" or "every 1h"
+	if !strings.Contains(listResult.ForLLM, "recurring task") {
+		t.Errorf("expected job name in output, got: %s", listResult.ForLLM)
+	}
+}
+
+func TestCronTool_RemoveJob_Missing(t *testing.T) {
+	tool := newTestCronTool(t)
+	result := tool.Execute(context.Background(), map[string]any{
+		"action": "remove",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error when job_id is missing")
+	}
+	if !strings.Contains(result.ForLLM, "job_id is required") {
+		t.Errorf("expected 'job_id is required', got: %s", result.ForLLM)
+	}
+}
+
+func TestCronTool_RemoveJob_Empty(t *testing.T) {
+	tool := newTestCronTool(t)
+	result := tool.Execute(context.Background(), map[string]any{
+		"action": "remove",
+		"job_id": "",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error when job_id is empty")
+	}
+}
+
+func TestCronTool_RemoveJob_NotFound(t *testing.T) {
+	tool := newTestCronTool(t)
+	result := tool.Execute(context.Background(), map[string]any{
+		"action": "remove",
+		"job_id": "nonexistent-job-id",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error for non-existent job")
+	}
+	if !strings.Contains(result.ForLLM, "not found") {
+		t.Errorf("expected 'not found' message, got: %s", result.ForLLM)
+	}
+}
+
+func TestCronTool_RemoveJob_Success(t *testing.T) {
+	tool := newTestCronTool(t)
+	ctx := WithToolContext(context.Background(), "cli", "direct")
+
+	// Add a job
+	addResult := tool.Execute(ctx, map[string]any{
+		"action":     "add",
+		"message":    "job to remove",
+		"at_seconds": float64(60),
+	})
+	if addResult.IsError {
+		t.Fatalf("failed to add job: %s", addResult.ForLLM)
+	}
+
+	// Extract job ID from result
+	jobs := tool.cronService.ListJobs(false)
+	if len(jobs) == 0 {
+		t.Fatal("expected job to be created")
+	}
+	jobID := jobs[0].ID
+
+	// Remove the job
+	removeResult := tool.Execute(context.Background(), map[string]any{
+		"action": "remove",
+		"job_id": jobID,
+	})
+
+	if removeResult.IsError {
+		t.Fatalf("unexpected error: %s", removeResult.ForLLM)
+	}
+	if !strings.Contains(removeResult.ForLLM, "removed") {
+		t.Errorf("expected 'removed' message, got: %s", removeResult.ForLLM)
+	}
+
+	// Verify job is gone
+	jobs = tool.cronService.ListJobs(false)
+	for _, j := range jobs {
+		if j.ID == jobID {
+			t.Fatal("job was not removed")
+		}
+	}
+}
+
+func TestCronTool_EnableJob_Missing(t *testing.T) {
+	tool := newTestCronTool(t)
+	result := tool.Execute(context.Background(), map[string]any{
+		"action": "enable",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error when job_id is missing")
+	}
+	if !strings.Contains(result.ForLLM, "job_id is required") {
+		t.Errorf("expected 'job_id is required', got: %s", result.ForLLM)
+	}
+}
+
+func TestCronTool_EnableJob_NotFound(t *testing.T) {
+	tool := newTestCronTool(t)
+	result := tool.Execute(context.Background(), map[string]any{
+		"action": "enable",
+		"job_id": "nonexistent-job-id",
+	})
+
+	if !result.IsError {
+		t.Fatal("expected error for non-existent job")
+	}
+	if !strings.Contains(result.ForLLM, "not found") {
+		t.Errorf("expected 'not found' message, got: %s", result.ForLLM)
+	}
+}
+
+func TestCronTool_EnableJob_Success(t *testing.T) {
+	tool := newTestCronTool(t)
+	ctx := WithToolContext(context.Background(), "cli", "direct")
+
+	// Add a job
+	addResult := tool.Execute(ctx, map[string]any{
+		"action":     "add",
+		"message":    "job to enable",
+		"at_seconds": float64(60),
+	})
+	if addResult.IsError {
+		t.Fatalf("failed to add job: %s", addResult.ForLLM)
+	}
+
+	// Get the job ID
+	jobs := tool.cronService.ListJobs(false)
+	if len(jobs) == 0 {
+		t.Fatal("expected job to be created")
+	}
+	jobID := jobs[0].ID
+
+	// Enable the job
+	enableResult := tool.Execute(context.Background(), map[string]any{
+		"action": "enable",
+		"job_id": jobID,
+	})
+
+	if enableResult.IsError {
+		t.Fatalf("unexpected error: %s", enableResult.ForLLM)
+	}
+	if !strings.Contains(enableResult.ForLLM, "enabled") {
+		t.Errorf("expected 'enabled' message, got: %s", enableResult.ForLLM)
+	}
+}
+
+func TestCronTool_DisableJob_Success(t *testing.T) {
+	tool := newTestCronTool(t)
+	ctx := WithToolContext(context.Background(), "cli", "direct")
+
+	// Add a job
+	addResult := tool.Execute(ctx, map[string]any{
+		"action":     "add",
+		"message":    "job to disable",
+		"at_seconds": float64(60),
+	})
+	if addResult.IsError {
+		t.Fatalf("failed to add job: %s", addResult.ForLLM)
+	}
+
+	// Get the job ID
+	jobs := tool.cronService.ListJobs(false)
+	if len(jobs) == 0 {
+		t.Fatal("expected job to be created")
+	}
+	jobID := jobs[0].ID
+
+	// Disable the job
+	disableResult := tool.Execute(context.Background(), map[string]any{
+		"action": "disable",
+		"job_id": jobID,
+	})
+
+	if disableResult.IsError {
+		t.Fatalf("unexpected error: %s", disableResult.ForLLM)
+	}
+	if !strings.Contains(disableResult.ForLLM, "disabled") {
+		t.Errorf("expected 'disabled' message, got: %s", disableResult.ForLLM)
+	}
+}

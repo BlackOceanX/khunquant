@@ -782,3 +782,94 @@ func writeSSEEvent(t *testing.T, w http.ResponseWriter, event string, payload ma
 	fmt.Fprintf(w, "event: %s\n", event)
 	fmt.Fprintf(w, "data: %s\n\n", string(b))
 }
+
+func TestAppendUniqueCodexToolCall_New(t *testing.T) {
+	seen := map[string]struct{}{}
+	calls := appendUniqueCodexToolCall(nil, seen, ToolCall{ID: "tc1", Name: "tool"})
+	if len(calls) != 1 {
+		t.Errorf("appendUniqueCodexToolCall new: got %d, want 1", len(calls))
+	}
+}
+
+func TestAppendUniqueCodexToolCall_Duplicate(t *testing.T) {
+	seen := map[string]struct{}{}
+	calls := appendUniqueCodexToolCall(nil, seen, ToolCall{ID: "tc1", Name: "tool"})
+	calls = appendUniqueCodexToolCall(calls, seen, ToolCall{ID: "tc1", Name: "tool"})
+	if len(calls) != 1 {
+		t.Errorf("appendUniqueCodexToolCall duplicate: got %d, want 1", len(calls))
+	}
+}
+
+func TestAppendUniqueCodexToolCall_FallsBackToName(t *testing.T) {
+	seen := map[string]struct{}{}
+	calls := appendUniqueCodexToolCall(nil, seen, ToolCall{ID: "", Name: "myTool"})
+	if len(calls) != 1 {
+		t.Errorf("appendUniqueCodexToolCall by name: got %d, want 1", len(calls))
+	}
+	calls = appendUniqueCodexToolCall(calls, seen, ToolCall{ID: "", Name: "myTool"})
+	if len(calls) != 1 {
+		t.Errorf("appendUniqueCodexToolCall by name duplicate: got %d, want 1", len(calls))
+	}
+}
+
+func TestCodexToolCallFromParts_EmptyName(t *testing.T) {
+	_, ok := codexToolCallFromParts("cid", "", `{}`)
+	if ok {
+		t.Error("codexToolCallFromParts with empty name should return ok=false")
+	}
+}
+
+func TestCodexToolCallFromParts_ValidJSON(t *testing.T) {
+	tc, ok := codexToolCallFromParts("cid", "my_tool", `{"path":"/tmp"}`)
+	if !ok {
+		t.Fatal("codexToolCallFromParts valid JSON: ok=false")
+	}
+	if tc.ID != "cid" || tc.Name != "my_tool" {
+		t.Errorf("codexToolCallFromParts: ID=%q Name=%q", tc.ID, tc.Name)
+	}
+	if tc.Arguments["path"] != "/tmp" {
+		t.Errorf("codexToolCallFromParts: args[path] = %v", tc.Arguments["path"])
+	}
+}
+
+func TestCodexToolCallFromParts_InvalidJSON(t *testing.T) {
+	tc, ok := codexToolCallFromParts("", "tool", "not json")
+	if !ok {
+		t.Fatal("codexToolCallFromParts invalid JSON: expected ok=true (fallback)")
+	}
+	if tc.Arguments["raw"] != "not json" {
+		t.Errorf("codexToolCallFromParts invalid JSON: args[raw] = %v", tc.Arguments["raw"])
+	}
+	if tc.ID != "tool" {
+		t.Errorf("codexToolCallFromParts empty callID should fallback to name, got %q", tc.ID)
+	}
+}
+
+func TestCodexMessageContent_OutputText(t *testing.T) {
+	parts := []responses.ResponseOutputMessageContentUnion{
+		{Type: "output_text", Text: "Hello"},
+		{Type: "output_text", Text: " World"},
+	}
+	got := codexMessageContent(parts)
+	if got != "Hello World" {
+		t.Errorf("codexMessageContent = %q, want 'Hello World'", got)
+	}
+}
+
+func TestCodexMessageContent_SkipsNonText(t *testing.T) {
+	parts := []responses.ResponseOutputMessageContentUnion{
+		{Type: "output_text", Text: "Hello"},
+		{Type: "refusal", Text: "nope"},
+	}
+	got := codexMessageContent(parts)
+	if got != "Hello" {
+		t.Errorf("codexMessageContent = %q, want 'Hello'", got)
+	}
+}
+
+func TestCodexMessageContent_Empty(t *testing.T) {
+	got := codexMessageContent(nil)
+	if got != "" {
+		t.Errorf("codexMessageContent nil = %q, want empty", got)
+	}
+}

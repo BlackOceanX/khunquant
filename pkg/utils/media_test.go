@@ -1,7 +1,12 @@
 package utils_test
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/cryptoquantumwave/khunquant/pkg/utils"
 )
@@ -90,4 +95,100 @@ func TestSanitizeFilename_ReplacesForwardSlash(t *testing.T) {
 	if got != "normal.txt" {
 		t.Errorf("want %q, got %q", "normal.txt", got)
 	}
+}
+
+// --- DownloadFile ---
+
+func TestDownloadFile_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "file contents")
+	}))
+	defer srv.Close()
+
+	path := utils.DownloadFile(srv.URL, "test.txt", utils.DownloadOptions{
+		Timeout:      5 * time.Second,
+		LoggerPrefix: "test",
+	})
+	if path == "" {
+		t.Fatal("DownloadFile should return non-empty path on success")
+	}
+	defer os.Remove(path)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "file contents" {
+		t.Errorf("content = %q, want 'file contents'", string(data))
+	}
+}
+
+func TestDownloadFile_NonOKStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	path := utils.DownloadFile(srv.URL, "test.txt", utils.DownloadOptions{Timeout: 5 * time.Second})
+	if path != "" {
+		t.Errorf("DownloadFile with 404 should return empty string, got %q", path)
+	}
+}
+
+func TestDownloadFile_InvalidURL(t *testing.T) {
+	path := utils.DownloadFile("://invalid-url", "test.txt", utils.DownloadOptions{})
+	if path != "" {
+		t.Errorf("DownloadFile with invalid URL should return empty string, got %q", path)
+	}
+}
+
+func TestDownloadFile_WithExtraHeaders(t *testing.T) {
+	var gotHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("X-Test-Header")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+
+	path := utils.DownloadFile(srv.URL, "test.txt", utils.DownloadOptions{
+		Timeout:      5 * time.Second,
+		ExtraHeaders: map[string]string{"X-Test-Header": "myvalue"},
+	})
+	if path != "" {
+		defer os.Remove(path)
+	}
+	if gotHeader != "myvalue" {
+		t.Errorf("X-Test-Header = %q, want 'myvalue'", gotHeader)
+	}
+}
+
+func TestDownloadFile_InvalidProxyURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	path := utils.DownloadFile(srv.URL, "test.txt", utils.DownloadOptions{
+		ProxyURL: "://bad-proxy",
+		Timeout:  5 * time.Second,
+	})
+	if path != "" {
+		t.Errorf("DownloadFile with invalid proxy should return empty string, got %q", path)
+	}
+}
+
+func TestDownloadFileSimple_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "simple content")
+	}))
+	defer srv.Close()
+
+	path := utils.DownloadFileSimple(srv.URL, "simple.txt")
+	if path == "" {
+		t.Fatal("DownloadFileSimple should return non-empty path on success")
+	}
+	defer os.Remove(path)
 }

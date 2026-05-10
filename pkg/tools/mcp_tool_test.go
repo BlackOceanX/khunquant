@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -632,5 +633,303 @@ func TestMCPTool_Execute_LargeBase64TextIsOmittedFromContext(t *testing.T) {
 
 	if result.ForLLM != largeBase64OmittedMessage {
 		t.Fatalf("expected sanitized large base64 note, got %q", result.ForLLM)
+	}
+}
+
+func TestSummarizeResourceLink_Nil(t *testing.T) {
+	got := summarizeResourceLink(nil)
+	if got == "" {
+		t.Error("summarizeResourceLink(nil) should return non-empty string")
+	}
+}
+
+func TestSummarizeResourceLink_Empty(t *testing.T) {
+	got := summarizeResourceLink(&mcp.ResourceLink{})
+	if got == "" {
+		t.Error("summarizeResourceLink empty should return non-empty string")
+	}
+}
+
+func TestSummarizeResourceLink_WithFields(t *testing.T) {
+	got := summarizeResourceLink(&mcp.ResourceLink{
+		Name:     "my-resource",
+		URI:      "file:///tmp/data.json",
+		MIMEType: "application/json",
+	})
+	if !strings.Contains(got, "my-resource") {
+		t.Errorf("summarizeResourceLink should contain name, got %q", got)
+	}
+	if !strings.Contains(got, "file:///tmp/data.json") {
+		t.Errorf("summarizeResourceLink should contain uri, got %q", got)
+	}
+}
+
+func TestSummarizeEmbeddedResource_NilContent(t *testing.T) {
+	got := summarizeEmbeddedResource(nil)
+	if got == "" {
+		t.Error("summarizeEmbeddedResource(nil) should return non-empty string")
+	}
+}
+
+func TestSummarizeEmbeddedResource_NilResource(t *testing.T) {
+	got := summarizeEmbeddedResource(&mcp.EmbeddedResource{Resource: nil})
+	if got == "" {
+		t.Error("summarizeEmbeddedResource nil resource should return non-empty string")
+	}
+}
+
+func TestSummarizeEmbeddedResource_WithURI(t *testing.T) {
+	got := summarizeEmbeddedResource(&mcp.EmbeddedResource{
+		Resource: &mcp.ResourceContents{URI: "file:///data.bin", MIMEType: "application/octet-stream"},
+	})
+	if !strings.Contains(got, "file:///data.bin") {
+		t.Errorf("summarizeEmbeddedResource should contain URI, got %q", got)
+	}
+}
+
+func TestSummarizeEmbeddedResource_NoURI(t *testing.T) {
+	got := summarizeEmbeddedResource(&mcp.EmbeddedResource{
+		Resource: &mcp.ResourceContents{MIMEType: "text/plain"},
+	})
+	if got == "" {
+		t.Error("summarizeEmbeddedResource no URI should return non-empty string")
+	}
+}
+
+func TestNormalizedMIMEType_Empty(t *testing.T) {
+	if got := normalizedMIMEType(""); got != "application/octet-stream" {
+		t.Errorf("normalizedMIMEType empty = %q, want application/octet-stream", got)
+	}
+}
+
+func TestNormalizedMIMEType_WithValue(t *testing.T) {
+	if got := normalizedMIMEType("text/html"); got != "text/html" {
+		t.Errorf("normalizedMIMEType text/html = %q, want text/html", got)
+	}
+}
+
+func TestSanitizeIdentifierComponent_Simple(t *testing.T) {
+	got := sanitizeIdentifierComponent("MyServer")
+	if got != "myserver" {
+		t.Errorf("got %q, want 'myserver'", got)
+	}
+}
+
+func TestSanitizeIdentifierComponent_SpecialChars(t *testing.T) {
+	got := sanitizeIdentifierComponent("my server!")
+	if got != "my_server" {
+		t.Errorf("got %q, want 'my_server'", got)
+	}
+}
+
+func TestSanitizeIdentifierComponent_ConsecutiveSpecial(t *testing.T) {
+	got := sanitizeIdentifierComponent("a!!b")
+	if got != "a_b" {
+		t.Errorf("got %q, want 'a_b'", got)
+	}
+}
+
+func TestSanitizeIdentifierComponent_AllSpecial(t *testing.T) {
+	got := sanitizeIdentifierComponent("!!!")
+	if got != "unnamed" {
+		t.Errorf("got %q, want 'unnamed'", got)
+	}
+}
+
+func TestSanitizeIdentifierComponent_Empty(t *testing.T) {
+	got := sanitizeIdentifierComponent("")
+	if got != "unnamed" {
+		t.Errorf("got %q, want 'unnamed'", got)
+	}
+}
+
+func TestSanitizeIdentifierComponent_LongString(t *testing.T) {
+	long := ""
+	for len(long) < 100 {
+		long += "abcdef"
+	}
+	got := sanitizeIdentifierComponent(long)
+	if len(got) > 64 {
+		t.Errorf("len = %d, want <= 64", len(got))
+	}
+}
+
+func TestSanitizeIdentifierComponent_AllowedChars(t *testing.T) {
+	got := sanitizeIdentifierComponent("my-tool_v2")
+	if got != "my-tool_v2" {
+		t.Errorf("got %q, want 'my-tool_v2'", got)
+	}
+}
+
+func TestSanitizeIdentifierComponent_LeadingTrailingSpecial(t *testing.T) {
+	got := sanitizeIdentifierComponent("!hello!")
+	if got != "hello" {
+		t.Errorf("got %q, want 'hello'", got)
+	}
+}
+
+func TestAnnotationsAllowUser_Nil(t *testing.T) {
+	if !annotationsAllowUser(nil) {
+		t.Error("nil annotations should allow user")
+	}
+}
+
+func TestAnnotationsAllowUser_EmptyAudience(t *testing.T) {
+	anns := &mcp.Annotations{Audience: []mcp.Role{}}
+	if !annotationsAllowUser(anns) {
+		t.Error("empty audience should allow user")
+	}
+}
+
+func TestAnnotationsAllowUser_WithUser(t *testing.T) {
+	anns := &mcp.Annotations{Audience: []mcp.Role{"user"}}
+	if !annotationsAllowUser(anns) {
+		t.Error("audience with 'user' should allow user")
+	}
+}
+
+func TestAnnotationsAllowUser_WithUserUppercase(t *testing.T) {
+	anns := &mcp.Annotations{Audience: []mcp.Role{"User"}}
+	if !annotationsAllowUser(anns) {
+		t.Error("audience with 'User' should allow user (case-insensitive)")
+	}
+}
+
+func TestAnnotationsAllowUser_AssistantOnly(t *testing.T) {
+	anns := &mcp.Annotations{Audience: []mcp.Role{"assistant"}}
+	if annotationsAllowUser(anns) {
+		t.Error("audience with 'assistant' only should NOT allow user")
+	}
+}
+
+func TestSummarizeResourceLink_WithDescription(t *testing.T) {
+	got := summarizeResourceLink(&mcp.ResourceLink{
+		Name:        "my-resource",
+		URI:         "mcp://server/resource",
+		Description: "A useful resource",
+	})
+	if !strings.Contains(got, "description=") {
+		t.Errorf("expected description= in output, got: %s", got)
+	}
+	if !strings.Contains(got, "A useful resource") {
+		t.Errorf("expected description text in output, got: %s", got)
+	}
+}
+
+func TestSummarizeResourceLink_LongDescription(t *testing.T) {
+	desc := ""
+	for len(desc) < 300 {
+		desc += "abcdefghij"
+	}
+	got := summarizeResourceLink(&mcp.ResourceLink{Description: desc})
+	if !strings.Contains(got, "...") {
+		t.Errorf("long description should be truncated with '...', got: %s", got)
+	}
+}
+
+func TestSummarizeResourceLink_WithMIMEType(t *testing.T) {
+	got := summarizeResourceLink(&mcp.ResourceLink{
+		URI:      "mcp://server/data",
+		MIMEType: "application/json",
+	})
+	if !strings.Contains(got, "mime=") {
+		t.Errorf("expected mime= in output, got: %s", got)
+	}
+}
+
+// TestMCPTool_Name_LossyServerName checks that special chars in the server name
+// trigger the hash-suffix path (sanitization is lossy).
+func TestMCPTool_Name_LossyServerName(t *testing.T) {
+	manager := &MockMCPManager{}
+	tool := &mcp.Tool{Name: "get_data"}
+	// Space and ! are not allowed → sanitize replaces them → lossless check fails
+	mcpTool := NewMCPTool(manager, "my server!", tool)
+	name := mcpTool.Name()
+	// Name must contain an 8-char hex suffix separated by '_'
+	parts := strings.Split(name, "_")
+	suffix := parts[len(parts)-1]
+	if len(suffix) != 8 {
+		t.Errorf("expected 8-char hex suffix, got %q in name %q", suffix, name)
+	}
+}
+
+// TestMCPTool_Name_LossyToolName checks that special chars in the tool name
+// also trigger the hash-suffix path.
+func TestMCPTool_Name_LossyToolName(t *testing.T) {
+	manager := &MockMCPManager{}
+	tool := &mcp.Tool{Name: "get data!"}
+	mcpTool := NewMCPTool(manager, "myserver", tool)
+	name := mcpTool.Name()
+	parts := strings.Split(name, "_")
+	suffix := parts[len(parts)-1]
+	if len(suffix) != 8 {
+		t.Errorf("expected 8-char hex suffix, got %q in name %q", suffix, name)
+	}
+}
+
+// TestMCPTool_Name_TooLong checks that names exceeding 64 chars get truncated and hashed.
+func TestMCPTool_Name_TooLong(t *testing.T) {
+	manager := &MockMCPManager{}
+	longTool := strings.Repeat("a", 60)
+	tool := &mcp.Tool{Name: longTool}
+	mcpTool := NewMCPTool(manager, "myserver", tool)
+	name := mcpTool.Name()
+	if len(name) > 64 {
+		t.Errorf("name length %d exceeds 64: %q", len(name), name)
+	}
+	// Must still end with 8-char hex suffix (name was truncated → hash appended)
+	parts := strings.Split(name, "_")
+	suffix := parts[len(parts)-1]
+	if len(suffix) != 8 {
+		t.Errorf("expected 8-char hex suffix after truncation, got %q in name %q", suffix, name)
+	}
+}
+
+// TestMCPTool_Parameters_JSONRawMessage covers the json.RawMessage type assertion path.
+func TestMCPTool_Parameters_JSONRawMessage(t *testing.T) {
+	manager := &MockMCPManager{}
+	raw := json.RawMessage(`{"type":"object","properties":{"key":{"type":"string"}}}`)
+	tool := &mcp.Tool{Name: "test_tool", InputSchema: raw}
+	mcpTool := NewMCPTool(manager, "server", tool)
+	params := mcpTool.Parameters()
+	if params["type"] != "object" {
+		t.Errorf("expected type=object, got %v", params["type"])
+	}
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties to be a map")
+	}
+	if _, ok := props["key"]; !ok {
+		t.Error("expected key property to exist")
+	}
+}
+
+// TestMCPTool_Parameters_InvalidJSONRawMessage covers the unmarshal-error fallback.
+func TestMCPTool_Parameters_InvalidJSONRawMessage(t *testing.T) {
+	manager := &MockMCPManager{}
+	raw := json.RawMessage(`not valid json`)
+	tool := &mcp.Tool{Name: "test_tool", InputSchema: raw}
+	mcpTool := NewMCPTool(manager, "server", tool)
+	params := mcpTool.Parameters()
+	if params["type"] != "object" {
+		t.Errorf("expected fallback type=object, got %v", params["type"])
+	}
+}
+
+// TestMCPTool_Parameters_StructSchema covers the marshal/unmarshal path for struct types.
+func TestMCPTool_Parameters_StructSchema(t *testing.T) {
+	manager := &MockMCPManager{}
+	schema := struct {
+		Type       string `json:"type"`
+		Properties map[string]any `json:"properties"`
+	}{
+		Type:       "object",
+		Properties: map[string]any{"foo": map[string]any{"type": "string"}},
+	}
+	tool := &mcp.Tool{Name: "test_tool", InputSchema: schema}
+	mcpTool := NewMCPTool(manager, "server", tool)
+	params := mcpTool.Parameters()
+	if params["type"] != "object" {
+		t.Errorf("expected type=object from struct schema, got %v", params["type"])
 	}
 }

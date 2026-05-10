@@ -216,3 +216,34 @@ func TestDetectMediaType_UnknownFallsToOctetStream(t *testing.T) {
 		t.Errorf("expected application/octet-stream, got %q", got)
 	}
 }
+
+func TestSendFileTool_Name(t *testing.T) {
+	tool := NewSendFileTool(t.TempDir(), false, 0, nil)
+	if tool.Name() != NameSendFile {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameSendFile)
+	}
+}
+
+func TestSendFileTool_Description(t *testing.T) {
+	tool := NewSendFileTool(t.TempDir(), false, 0, nil)
+	if tool.Description() == "" {
+		t.Error("Description() should not be empty")
+	}
+}
+
+func TestSendFileTool_Parameters(t *testing.T) {
+	tool := NewSendFileTool(t.TempDir(), false, 0, nil)
+	params := tool.Parameters()
+	if params == nil {
+		t.Fatal("Parameters() should not be nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("Parameters() type = %v, want object", params["type"])
+	}
+}
+
+func TestSendFileTool_SetMediaStore(t *testing.T) {
+	tool := NewSendFileTool(t.TempDir(), false, 0, nil)
+	// SetMediaStore must not panic when called with nil.
+	tool.SetMediaStore(nil)
+}

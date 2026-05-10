@@ -836,3 +836,23 @@ func TestToolRegistry_ExecuteWithContext_SanitizesInlineMediaWithoutStore(t *tes
 		t.Fatalf("expected inline media omission note, got %q", result.ForLLM)
 	}
 }
+
+func TestToolRegistry_GetAll_Empty(t *testing.T) {
+	r := NewToolRegistry()
+	all := r.GetAll()
+	if all == nil {
+		t.Error("GetAll on empty registry should return non-nil slice")
+	}
+	if len(all) != 0 {
+		t.Errorf("GetAll on empty registry: got %d tools, want 0", len(all))
+	}
+}
+
+func TestToolRegistry_GetAll_CoreTool(t *testing.T) {
+	r := NewToolRegistry()
+	r.Register(&mockRegistryTool{name: "core-tool", desc: "core", params: map[string]any{}})
+	all := r.GetAll()
+	if len(all) != 1 {
+		t.Errorf("GetAll with 1 core tool: got %d, want 1", len(all))
+	}
+}

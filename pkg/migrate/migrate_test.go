@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -408,4 +409,247 @@ func (m *mockOperation) GetMigrateableDirs() []string {
 		return m.migrateDirs
 	}
 	return []string{}
+}
+
+func TestMigrateInstanceExecuteConvertConfig_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcConfig := filepath.Join(tmpDir, "src_config.json")
+	dstConfig := filepath.Join(tmpDir, "dst_config.json")
+	require.NoError(t, os.WriteFile(srcConfig, []byte(`{}`), 0o644))
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	instance.Register("mock", &mockOperation{})
+
+	actions := []Action{
+		{
+			Type:        ActionConvertConfig,
+			Source:      srcConfig,
+			Target:      dstConfig,
+			Description: "convert config",
+		},
+	}
+
+	result := instance.Execute(actions, tmpDir, tmpDir)
+	require.NotNil(t, result)
+	assert.True(t, result.ConfigMigrated)
+	assert.Empty(t, result.Errors)
+}
+
+func TestMigrateInstanceExecuteConvertConfig_Error(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	errMock := &errorConfigMock{}
+	instance.Register("mock", errMock)
+
+	actions := []Action{
+		{
+			Type:        ActionConvertConfig,
+			Source:      "/nonexistent/src.json",
+			Target:      filepath.Join(tmpDir, "dst.json"),
+			Description: "convert config",
+		},
+	}
+
+	result := instance.Execute(actions, tmpDir, tmpDir)
+	require.NotNil(t, result)
+	assert.False(t, result.ConfigMigrated)
+	assert.NotEmpty(t, result.Errors)
+}
+
+func TestMigrateInstancePlan_WithMockHandler(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	wsDir := filepath.Join(sourceDir, "workspace")
+	require.NoError(t, os.MkdirAll(wsDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wsDir, "notes.txt"), []byte("hello"), 0o644))
+
+	configPath := filepath.Join(sourceDir, "config.json")
+	require.NoError(t, os.WriteFile(configPath, []byte(`{}`), 0o644))
+
+	targetDir := filepath.Join(tmpDir, "target")
+	require.NoError(t, os.MkdirAll(targetDir, 0o755))
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	instance.Register("mock", &mockOperation{
+		sourceHome:   sourceDir,
+		sourceConfig: configPath,
+		sourceWs:     wsDir,
+		migrateFiles: []string{"notes.txt"},
+	})
+
+	actions, warnings, err := instance.Plan(Options{}, sourceDir, targetDir)
+	require.NoError(t, err)
+	_ = warnings
+	assert.NotEmpty(t, actions)
+}
+
+func TestMigrateInstancePlan_WorkspaceOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	wsDir := filepath.Join(sourceDir, "workspace")
+	require.NoError(t, os.MkdirAll(wsDir, 0o755))
+	targetDir := filepath.Join(tmpDir, "target")
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	instance.Register("mock", &mockOperation{sourceHome: sourceDir, sourceWs: wsDir})
+
+	opts := Options{WorkspaceOnly: true}
+	actions, _, err := instance.Plan(opts, sourceDir, targetDir)
+	require.NoError(t, err)
+	// No config action when WorkspaceOnly
+	for _, a := range actions {
+		if a.Type == ActionConvertConfig {
+			t.Error("Plan with WorkspaceOnly should not include config action")
+		}
+	}
+}
+
+func TestMigrateInstancePlan_ConfigOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	configPath := filepath.Join(sourceDir, "config.json")
+	require.NoError(t, os.MkdirAll(sourceDir, 0o755))
+	require.NoError(t, os.WriteFile(configPath, []byte(`{}`), 0o644))
+	targetDir := filepath.Join(tmpDir, "target")
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	instance.Register("mock", &mockOperation{sourceHome: sourceDir, sourceConfig: configPath})
+
+	opts := Options{ConfigOnly: true}
+	actions, _, err := instance.Plan(opts, sourceDir, targetDir)
+	require.NoError(t, err)
+	hasConfig := false
+	for _, a := range actions {
+		if a.Type == ActionConvertConfig {
+			hasConfig = true
+		}
+	}
+	assert.True(t, hasConfig, "ConfigOnly plan should include config action")
+}
+
+// errorConfigMock is a mock that returns an error on ExecuteConfigMigration.
+type errorConfigMock struct{ mockOperation }
+
+func (e *errorConfigMock) ExecuteConfigMigration(src, dst string) error {
+	return fmt.Errorf("mock config migration error")
+}
+
+// noConfigMock returns an error from GetSourceConfigFile to trigger the warning path.
+type noConfigMock struct{ mockOperation }
+
+func (n *noConfigMock) GetSourceConfigFile() (string, error) {
+	return "", fmt.Errorf("no config file found")
+}
+
+func TestMigrateInstancePlan_ConfigFileMissingWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	wsDir := filepath.Join(sourceDir, "workspace")
+	require.NoError(t, os.MkdirAll(wsDir, 0o755))
+	targetDir := filepath.Join(tmpDir, "target")
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	instance.Register("mock", &noConfigMock{mockOperation{sourceHome: sourceDir, sourceWs: wsDir}})
+
+	actions, warnings, err := instance.Plan(Options{}, sourceDir, targetDir)
+	require.NoError(t, err)
+	assert.NotEmpty(t, warnings, "expected warning when config file missing")
+	for _, a := range actions {
+		if a.Type == ActionConvertConfig {
+			t.Error("Plan should not include config action when GetSourceConfigFile fails")
+		}
+	}
+}
+
+func TestMigrateInstancePlan_WorkspaceDirMissingWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	require.NoError(t, os.MkdirAll(sourceDir, 0o755))
+	configPath := filepath.Join(sourceDir, "config.json")
+	require.NoError(t, os.WriteFile(configPath, []byte(`{}`), 0o644))
+	targetDir := filepath.Join(tmpDir, "target")
+
+	nonExistentWs := filepath.Join(sourceDir, "nonexistent-workspace")
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	instance.Register("mock", &mockOperation{
+		sourceHome:   sourceDir,
+		sourceConfig: configPath,
+		sourceWs:     nonExistentWs,
+	})
+
+	actions, warnings, err := instance.Plan(Options{}, sourceDir, targetDir)
+	require.NoError(t, err)
+	assert.NotEmpty(t, warnings, "expected warning when workspace dir not found")
+	_ = actions
+}
+
+func TestMigrateInstanceRun_DryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	wsDir := filepath.Join(sourceDir, "workspace")
+	require.NoError(t, os.MkdirAll(wsDir, 0o755))
+	configPath := filepath.Join(sourceDir, "config.json")
+	require.NoError(t, os.WriteFile(configPath, []byte(`{}`), 0o644))
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	instance.Register("mock", &mockOperation{
+		sourceHome:   sourceDir,
+		sourceConfig: configPath,
+		sourceWs:     wsDir,
+	})
+
+	opts := Options{DryRun: true}
+	result, err := instance.Run(opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+}
+
+func TestMigrateInstanceRun_Force(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	wsDir := filepath.Join(sourceDir, "workspace")
+	require.NoError(t, os.MkdirAll(wsDir, 0o755))
+	configPath := filepath.Join(sourceDir, "config.json")
+	require.NoError(t, os.WriteFile(configPath, []byte(`{}`), 0o644))
+
+	instance := &MigrateInstance{
+		options:  Options{Source: "mock"},
+		handlers: make(map[string]Operation),
+	}
+	instance.Register("mock", &mockOperation{
+		sourceHome:   sourceDir,
+		sourceConfig: configPath,
+		sourceWs:     wsDir,
+	})
+
+	opts := Options{Force: true}
+	result, err := instance.Run(opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 }

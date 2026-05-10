@@ -337,3 +337,31 @@ func TestPromoteTools_ConcurrentWithTickTTL(t *testing.T) {
 	}
 	<-done
 }
+
+func TestRegexSearchTool_Metadata(t *testing.T) {
+	r := NewToolRegistry()
+	tool := NewRegexSearchTool(r, 5, 10)
+	if tool.Name() != NameToolSearchRegex {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameToolSearchRegex)
+	}
+	if tool.Description() == "" {
+		t.Error("Description() should not be empty")
+	}
+	if tool.Parameters() == nil {
+		t.Fatal("Parameters() should not be nil")
+	}
+}
+
+func TestBM25SearchTool_Metadata(t *testing.T) {
+	r := NewToolRegistry()
+	tool := NewBM25SearchTool(r, 5, 10)
+	if tool.Name() != NameToolSearchBM25 {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameToolSearchBM25)
+	}
+	if tool.Description() == "" {
+		t.Error("Description() should not be empty")
+	}
+	if tool.Parameters() == nil {
+		t.Fatal("Parameters() should not be nil")
+	}
+}

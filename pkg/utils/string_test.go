@@ -128,3 +128,42 @@ func TestSanitizeMessageContent(t *testing.T) {
 		})
 	}
 }
+
+func TestSetDisableTruncation_Disables(t *testing.T) {
+	SetDisableTruncation(true)
+	t.Cleanup(func() { SetDisableTruncation(false) })
+
+	long := "hello world this is a long string"
+	got := Truncate(long, 5)
+	if got != long {
+		t.Errorf("Truncate with DisableTruncation=true should return full string, got %q", got)
+	}
+}
+
+func TestSetDisableTruncation_Enables(t *testing.T) {
+	SetDisableTruncation(false)
+	long := "hello world this is long"
+	got := Truncate(long, 8)
+	if got == long {
+		t.Errorf("Truncate with DisableTruncation=false should truncate")
+	}
+}
+
+func TestDerefStr_Nil(t *testing.T) {
+	if got := DerefStr(nil, "fallback"); got != "fallback" {
+		t.Errorf("DerefStr nil = %q, want fallback", got)
+	}
+}
+
+func TestDerefStr_NonNil(t *testing.T) {
+	s := "hello"
+	if got := DerefStr(&s, "fallback"); got != "hello" {
+		t.Errorf("DerefStr non-nil = %q, want hello", got)
+	}
+}
+
+func TestDerefStr_EmptyFallback(t *testing.T) {
+	if got := DerefStr(nil, ""); got != "" {
+		t.Errorf("DerefStr nil empty fallback = %q, want empty", got)
+	}
+}

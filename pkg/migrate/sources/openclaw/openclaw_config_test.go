@@ -820,3 +820,82 @@ func strPtr(s string) *string {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+// TestGetEnabled tests the GetEnabled method
+func TestOpenClawConfig_GetEnabled(t *testing.T) {
+	cfg := &OpenClawConfig{}
+	if !cfg.GetEnabled() {
+		t.Error("expected GetEnabled() to return true")
+	}
+}
+
+// TestGetChannelAllowFrom tests the GetChannelAllowFrom function
+func TestGetChannelAllowFrom(t *testing.T) {
+	tests := []struct {
+		name     string
+		channel  any
+		expected []string
+	}{
+		{
+			name:     "telegram config",
+			channel:  &OpenClawTelegramConfig{AllowFrom: []string{"user1", "user2"}},
+			expected: []string{"user1", "user2"},
+		},
+		{
+			name:     "discord config",
+			channel:  &OpenClawDiscordConfig{AllowFrom: []string{"role1"}},
+			expected: []string{"role1"},
+		},
+		{
+			name:     "slack config",
+			channel:  &OpenClawSlackConfig{AllowFrom: []string{"channel1"}},
+			expected: []string{"channel1"},
+		},
+		{
+			name:     "matrix config",
+			channel:  &OpenClawMatrixConfig{AllowFrom: []string{"room1"}},
+			expected: []string{"room1"},
+		},
+		{
+			name:     "whatsapp config",
+			channel:  &OpenClawWhatsAppConfig{AllowFrom: []string{"contact1"}},
+			expected: []string{"contact1"},
+		},
+		{
+			name:     "feishu config",
+			channel:  &OpenClawFeishuConfig{AllowFrom: []string{"user1"}},
+			expected: []string{"user1"},
+		},
+		{
+			name:     "nil telegram",
+			channel:  (*OpenClawTelegramConfig)(nil),
+			expected: nil,
+		},
+		{
+			name:     "unknown type",
+			channel:  "unknown",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetChannelAllowFrom(tt.channel)
+			if !sliceEqual(result, tt.expected) {
+				t.Errorf("GetChannelAllowFrom(%v) = %v, want %v", tt.channel, result, tt.expected)
+			}
+		})
+	}
+}
+
+func sliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

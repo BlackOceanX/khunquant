@@ -252,3 +252,61 @@ func TestMessageTool_Parameters(t *testing.T) {
 		t.Error("Expected chat_id type to be 'string'")
 	}
 }
+
+func TestMessageTool_ResetSentInRound(t *testing.T) {
+	mt := NewMessageTool()
+	if mt.HasSentInRound() {
+		t.Error("new MessageTool should have HasSentInRound=false")
+	}
+
+	// Simulate a send by directly adding to sentTargets
+	mt.mu.Lock()
+	mt.sentTargets = append(mt.sentTargets, sentTarget{Channel: "test", ChatID: "123"})
+	mt.mu.Unlock()
+
+	if !mt.HasSentInRound() {
+		t.Error("HasSentInRound should be true after adding a target")
+	}
+
+	mt.ResetSentInRound()
+	if mt.HasSentInRound() {
+		t.Error("HasSentInRound should be false after reset")
+	}
+}
+
+func TestMessageTool_HasSentInRound_Empty(t *testing.T) {
+	mt := NewMessageTool()
+	if mt.HasSentInRound() {
+		t.Error("new MessageTool should have HasSentInRound=false")
+	}
+}
+
+func TestMessageTool_HasSentTo_Empty(t *testing.T) {
+	mt := NewMessageTool()
+	if mt.HasSentTo("chan", "chat") {
+		t.Error("HasSentTo on empty tool should be false")
+	}
+}
+
+func TestMessageTool_HasSentTo_Match(t *testing.T) {
+	mt := NewMessageTool()
+	mt.mu.Lock()
+	mt.sentTargets = append(mt.sentTargets, sentTarget{Channel: "telegram", ChatID: "42"})
+	mt.mu.Unlock()
+	if !mt.HasSentTo("telegram", "42") {
+		t.Error("HasSentTo should match exact channel+chatID")
+	}
+}
+
+func TestMessageTool_HasSentTo_NoMatch(t *testing.T) {
+	mt := NewMessageTool()
+	mt.mu.Lock()
+	mt.sentTargets = append(mt.sentTargets, sentTarget{Channel: "telegram", ChatID: "42"})
+	mt.mu.Unlock()
+	if mt.HasSentTo("telegram", "99") {
+		t.Error("HasSentTo should not match different chatID")
+	}
+	if mt.HasSentTo("discord", "42") {
+		t.Error("HasSentTo should not match different channel")
+	}
+}

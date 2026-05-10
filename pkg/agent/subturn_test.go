@@ -2025,3 +2025,96 @@ func TestSubTurn_IndependentContext(t *testing.T) {
 		t.Log("✓ SubTurn completed successfully (independent context)")
 	}
 }
+
+func TestIsContextLengthError_Nil(t *testing.T) {
+	if isContextLengthError(nil) {
+		t.Error("isContextLengthError(nil) should be false")
+	}
+}
+
+func TestIsContextLengthError_ContextLengthExceeded(t *testing.T) {
+	if !isContextLengthError(fmt.Errorf("context_length_exceeded")) {
+		t.Error("expected true for context_length_exceeded error")
+	}
+}
+
+func TestIsContextLengthError_MaximumContextLength(t *testing.T) {
+	if !isContextLengthError(fmt.Errorf("maximum context length reached")) {
+		t.Error("expected true for maximum context length error")
+	}
+}
+
+func TestIsContextLengthError_ContextWindow(t *testing.T) {
+	if !isContextLengthError(fmt.Errorf("context window exceeded")) {
+		t.Error("expected true for context window error")
+	}
+}
+
+func TestIsContextLengthError_TooManyTokens(t *testing.T) {
+	if !isContextLengthError(fmt.Errorf("too many tokens")) {
+		t.Error("expected true for too many tokens error")
+	}
+}
+
+func TestIsContextLengthError_PromptTooLong(t *testing.T) {
+	if !isContextLengthError(fmt.Errorf("prompt is too long")) {
+		t.Error("expected true for prompt too long error")
+	}
+}
+
+func TestIsContextLengthError_Timeout(t *testing.T) {
+	if isContextLengthError(fmt.Errorf("context_length_exceeded and timeout")) {
+		t.Error("should return false for error containing 'timeout'")
+	}
+}
+
+func TestIsContextLengthError_DeadlineExceeded(t *testing.T) {
+	if isContextLengthError(fmt.Errorf("deadline exceeded")) {
+		t.Error("should return false for deadline exceeded error")
+	}
+}
+
+func TestIsContextLengthError_UnrelatedError(t *testing.T) {
+	if isContextLengthError(fmt.Errorf("connection refused")) {
+		t.Error("should return false for unrelated error")
+	}
+}
+
+func TestAgentLoopFromContext_Nil(t *testing.T) {
+	if got := AgentLoopFromContext(context.Background()); got != nil {
+		t.Errorf("AgentLoopFromContext on empty context = %v, want nil", got)
+	}
+}
+
+func TestAgentLoopFromContext_WithValue(t *testing.T) {
+	al := &AgentLoop{}
+	ctx := WithAgentLoop(context.Background(), al)
+	if got := AgentLoopFromContext(ctx); got != al {
+		t.Errorf("AgentLoopFromContext = %v, want %v", got, al)
+	}
+}
+
+func TestSpawnSubTurn_NilAgentLoop(t *testing.T) {
+	_, err := SpawnSubTurn(context.Background(), SubTurnConfig{})
+	if err == nil {
+		t.Error("SpawnSubTurn with no AgentLoop in context should return error")
+	}
+}
+
+func TestSpawnSubTurn_NilTurnState(t *testing.T) {
+	al := &AgentLoop{}
+	ctx := WithAgentLoop(context.Background(), al)
+	_, err := SpawnSubTurn(ctx, SubTurnConfig{})
+	if err == nil {
+		t.Error("SpawnSubTurn with no turnState in context should return error")
+	}
+}
+
+func TestAgentLoopSpawner_SpawnSubTurn_NilTurnState(t *testing.T) {
+	al := &AgentLoop{}
+	spawner := NewSubTurnSpawner(al)
+	_, err := spawner.SpawnSubTurn(context.Background(), tools.SubTurnConfig{})
+	if err == nil {
+		t.Error("AgentLoopSpawner.SpawnSubTurn with no turnState should return error")
+	}
+}

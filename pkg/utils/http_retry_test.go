@@ -279,3 +279,59 @@ func TestDoRequestWithRetry_Delay(t *testing.T) {
 
 	assert.GreaterOrEqual(t, delays[2], time.Millisecond)
 }
+
+func TestRetryDelayForAttempt_NilResp(t *testing.T) {
+	d := retryDelayForAttempt(nil, 0)
+	if d != retryDelayUnit {
+		t.Errorf("retryDelayForAttempt nil resp attempt=0: got %v, want %v", d, retryDelayUnit)
+	}
+}
+
+func TestRetryDelayForAttempt_NonTooManyRequests(t *testing.T) {
+	resp := &http.Response{StatusCode: http.StatusInternalServerError, Header: make(http.Header)}
+	d := retryDelayForAttempt(resp, 1)
+	want := retryDelayUnit * 2
+	if d != want {
+		t.Errorf("retryDelayForAttempt non-429 attempt=1: got %v, want %v", d, want)
+	}
+}
+
+func TestRetryDelayForAttempt_TooManyRequests_NoHeader(t *testing.T) {
+	resp := &http.Response{StatusCode: http.StatusTooManyRequests, Header: make(http.Header)}
+	d := retryDelayForAttempt(resp, 0)
+	if d != retryDelayUnit {
+		t.Errorf("retryDelayForAttempt 429 no header: got %v, want %v", d, retryDelayUnit)
+	}
+}
+
+func TestRetryDelayForAttempt_TooManyRequests_SecondsHeader(t *testing.T) {
+	h := make(http.Header)
+	h.Set("Retry-After", "5")
+	resp := &http.Response{StatusCode: http.StatusTooManyRequests, Header: h}
+	d := retryDelayForAttempt(resp, 0)
+	if d != 5*time.Second {
+		t.Errorf("retryDelayForAttempt 429 seconds header: got %v, want 5s", d)
+	}
+}
+
+func TestRetryDelayForAttempt_TooManyRequests_FutureDateHeader(t *testing.T) {
+	future := time.Now().Add(10 * time.Second).UTC().Format(http.TimeFormat)
+	h := make(http.Header)
+	h.Set("Retry-After", future)
+	resp := &http.Response{StatusCode: http.StatusTooManyRequests, Header: h}
+	d := retryDelayForAttempt(resp, 0)
+	if d <= 0 || d > 11*time.Second {
+		t.Errorf("retryDelayForAttempt future date: got %v, want ~10s positive delay", d)
+	}
+}
+
+func TestRetryDelayForAttempt_TooManyRequests_PastDateHeader(t *testing.T) {
+	past := time.Now().Add(-10 * time.Second).UTC().Format(http.TimeFormat)
+	h := make(http.Header)
+	h.Set("Retry-After", past)
+	resp := &http.Response{StatusCode: http.StatusTooManyRequests, Header: h}
+	d := retryDelayForAttempt(resp, 0)
+	if d != 0 {
+		t.Errorf("retryDelayForAttempt past date: got %v, want 0", d)
+	}
+}

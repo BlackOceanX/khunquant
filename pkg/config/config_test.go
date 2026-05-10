@@ -470,6 +470,107 @@ func TestLoadConfig_OpenAIWebSearchCanBeDisabled(t *testing.T) {
 	}
 }
 
+func TestIsToolEnabled_KnownTools(t *testing.T) {
+	cfg := &ToolsConfig{}
+	toolNames := []string{
+		"web", "cron", "exec", "skills", "media_cleanup",
+		"append_file", "edit_file", "find_skills", "i2c", "install_skill",
+		"list_dir", "message", "read_file", "spawn", "spi",
+		"subagent", "web_fetch", "send_file", "write_file", "mcp",
+		"get_assets_list", "get_total_value", "list_portfolios",
+		"take_snapshot", "query_snapshots", "snapshot_summary", "delete_snapshots",
+		"get_ticker", "get_tickers", "get_ohlcv", "get_orderbook",
+		"get_markets", "create_order", "cancel_order", "get_order",
+		"get_open_orders", "get_order_history", "get_trade_history",
+		"emergency_stop", "paper_trade", "get_order_rate_status",
+		"calculate_indicators", "market_analysis", "portfolio_allocation",
+		"set_price_alert", "set_indicator_alert", "transfer_funds",
+		"config_encrypt_keys", "create_dca_plan", "list_dca_plans",
+		"update_dca_plan", "delete_dca_plan", "execute_dca_order",
+		"get_dca_history", "get_dca_summary", "get_pnl_summary", "get_pnl_detail",
+	}
+	for _, name := range toolNames {
+		// with zero-value config all named tools should return false (not enabled)
+		got := cfg.IsToolEnabled(name)
+		if got {
+			t.Errorf("IsToolEnabled(%q) = true, want false for zero-value config", name)
+		}
+	}
+}
+
+func TestIsToolEnabled_UnknownTool(t *testing.T) {
+	cfg := &ToolsConfig{}
+	if !cfg.IsToolEnabled("nonexistent_tool_xyz") {
+		t.Error("IsToolEnabled unknown tool should return true (default-allow)")
+	}
+}
+
+func TestBinanceTHExchangeConfig_ResolveAccount_Empty(t *testing.T) {
+	cfg := &BinanceTHExchangeConfig{}
+	_, ok := cfg.ResolveAccount("")
+	if ok {
+		t.Error("ResolveAccount on empty accounts should return false")
+	}
+}
+
+func TestBinanceTHExchangeConfig_ResolveAccount_Found(t *testing.T) {
+	cfg := &BinanceTHExchangeConfig{
+		Accounts: []ExchangeAccount{{Name: "main"}},
+	}
+	acc, ok := cfg.ResolveAccount("main")
+	if !ok {
+		t.Fatal("expected account to be found")
+	}
+	if acc.Name != "main" {
+		t.Errorf("Name = %q, want main", acc.Name)
+	}
+}
+
+func TestBitkubExchangeConfig_ResolveAccount_Empty(t *testing.T) {
+	cfg := &BitkubExchangeConfig{}
+	_, ok := cfg.ResolveAccount("")
+	if ok {
+		t.Error("ResolveAccount on empty accounts should return false")
+	}
+}
+
+func TestBitkubExchangeConfig_ResolveAccount_Found(t *testing.T) {
+	cfg := &BitkubExchangeConfig{
+		Accounts: []ExchangeAccount{{Name: "spot"}},
+	}
+	acc, ok := cfg.ResolveAccount("spot")
+	if !ok {
+		t.Fatal("expected account to be found")
+	}
+	if acc.Name != "spot" {
+		t.Errorf("Name = %q, want spot", acc.Name)
+	}
+}
+
+func TestProvidersConfig_MarshalJSON_Empty(t *testing.T) {
+	p := ProvidersConfig{}
+	data, err := p.MarshalJSON()
+	if err != nil {
+		t.Fatalf("MarshalJSON error: %v", err)
+	}
+	if string(data) != "null" {
+		t.Errorf("MarshalJSON empty = %s, want null", data)
+	}
+}
+
+func TestProvidersConfig_MarshalJSON_NonEmpty(t *testing.T) {
+	p := ProvidersConfig{
+		Anthropic: ProviderConfig{APIKey: "sk-test"},
+	}
+	data, err := p.MarshalJSON()
+	if err != nil {
+		t.Fatalf("MarshalJSON error: %v", err)
+	}
+	if string(data) == "null" {
+		t.Error("MarshalJSON non-empty should not return null")
+	}
+}
+
 func TestLoadConfig_WebToolsProxy(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.json")

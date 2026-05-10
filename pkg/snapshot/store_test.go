@@ -270,3 +270,230 @@ func TestDeleteSnapshots_RequiresFilter(t *testing.T) {
 		t.Fatal("expected error when no filter provided")
 	}
 }
+
+func TestQuerySnapshots_AssetFilter(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	snap := &Snapshot{
+		TakenAt:    time.Now().UTC(),
+		Quote:      "USDT",
+		TotalValue: 5000,
+		Positions: []Position{
+			{Source: "binance", Asset: "BTC", Quantity: 0.1, Value: 3000},
+			{Source: "binance", Asset: "ETH", Quantity: 10, Value: 2000},
+		},
+	}
+	if _, err := store.SaveSnapshot(ctx, snap); err != nil {
+		t.Fatalf("SaveSnapshot: %v", err)
+	}
+
+	results, err := store.QuerySnapshots(ctx, QueryFilter{Asset: "btc"})
+	if err != nil {
+		t.Fatalf("QuerySnapshots asset: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result for asset filter, got %d", len(results))
+	}
+}
+
+func TestQuerySnapshots_LabelFilter(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC()
+	for i, label := range []string{"daily", "weekly", "daily"} {
+		snap := &Snapshot{
+			TakenAt:    base.Add(time.Duration(i) * time.Hour),
+			Quote:      "USDT",
+			TotalValue: float64(1000 + i*100),
+			Label:      label,
+		}
+		store.SaveSnapshot(ctx, snap)
+	}
+
+	results, err := store.QuerySnapshots(ctx, QueryFilter{Label: "daily"})
+	if err != nil {
+		t.Fatalf("QuerySnapshots label: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 daily results, got %d", len(results))
+	}
+}
+
+func TestQuerySnapshots_UntilFilter(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		snap := &Snapshot{
+			TakenAt:    base.Add(time.Duration(i) * 24 * time.Hour),
+			Quote:      "USDT",
+			TotalValue: 1000,
+		}
+		store.SaveSnapshot(ctx, snap)
+	}
+
+	until := base.Add(2 * 24 * time.Hour)
+	results, err := store.QuerySnapshots(ctx, QueryFilter{Until: &until})
+	if err != nil {
+		t.Fatalf("QuerySnapshots until: %v", err)
+	}
+	if len(results) != 3 {
+		t.Errorf("expected 3 results with until filter, got %d", len(results))
+	}
+}
+
+func TestQuerySnapshots_OffsetPagination(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	base := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		snap := &Snapshot{
+			TakenAt:    base.Add(time.Duration(i) * time.Hour),
+			Quote:      "USDT",
+			TotalValue: float64(1000 + i),
+		}
+		store.SaveSnapshot(ctx, snap)
+	}
+
+	results, err := store.QuerySnapshots(ctx, QueryFilter{Limit: 3, Offset: 2})
+	if err != nil {
+		t.Fatalf("QuerySnapshots offset: %v", err)
+	}
+	if len(results) != 3 {
+		t.Errorf("expected 3 results with offset, got %d", len(results))
+	}
+}
+
+func TestSnapshotSummary_WithGroupByMonth(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		snap := &Snapshot{
+			TakenAt:    time.Date(2026, time.Month(i+1), 15, 0, 0, 0, 0, time.UTC),
+			Quote:      "USDT",
+			TotalValue: float64(1000 + i*200),
+			Label:      "monthly",
+			Positions:  []Position{{Source: "binance", Asset: "BTC", Quantity: 1}},
+		}
+		store.SaveSnapshot(ctx, snap)
+	}
+
+	summary, err := store.SnapshotSummary(ctx, SummaryFilter{GroupBy: "month"})
+	if err != nil {
+		t.Fatalf("SnapshotSummary month: %v", err)
+	}
+	if len(summary.Groups) != 3 {
+		t.Errorf("expected 3 month groups, got %d", len(summary.Groups))
+	}
+}
+
+func TestSnapshotSummary_WithGroupByWeek(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		snap := &Snapshot{
+			TakenAt:    time.Date(2026, 1, 1+i*7, 0, 0, 0, 0, time.UTC),
+			Quote:      "USDT",
+			TotalValue: float64(1000 + i*100),
+		}
+		store.SaveSnapshot(ctx, snap)
+	}
+
+	summary, err := store.SnapshotSummary(ctx, SummaryFilter{GroupBy: "week"})
+	if err != nil {
+		t.Fatalf("SnapshotSummary week: %v", err)
+	}
+	if len(summary.Groups) == 0 {
+		t.Error("expected at least one week group")
+	}
+}
+
+func TestSnapshotSummary_WithGroupBySource(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for i, source := range []string{"binance", "bitkub"} {
+		snap := &Snapshot{
+			TakenAt:    time.Now().UTC().Add(time.Duration(i) * time.Hour),
+			Quote:      "USDT",
+			TotalValue: float64(1000 + i*500),
+			Positions:  []Position{{Source: source, Asset: "BTC", Quantity: 1}},
+		}
+		store.SaveSnapshot(ctx, snap)
+	}
+
+	summary, err := store.SnapshotSummary(ctx, SummaryFilter{GroupBy: "source"})
+	if err != nil {
+		t.Fatalf("SnapshotSummary source: %v", err)
+	}
+	if len(summary.Groups) != 2 {
+		t.Errorf("expected 2 source groups, got %d", len(summary.Groups))
+	}
+}
+
+func TestSnapshotSummary_WithSourceFilter(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for _, source := range []string{"binance", "bitkub"} {
+		snap := &Snapshot{
+			TakenAt:    time.Now().UTC(),
+			Quote:      "USDT",
+			TotalValue: 1000,
+			Positions:  []Position{{Source: source, Asset: "BTC", Quantity: 1}},
+		}
+		store.SaveSnapshot(ctx, snap)
+	}
+
+	summary, err := store.SnapshotSummary(ctx, SummaryFilter{Source: "binance"})
+	if err != nil {
+		t.Fatalf("SnapshotSummary source filter: %v", err)
+	}
+	if summary.Count == 0 {
+		t.Error("expected non-zero count for source filter")
+	}
+}
+
+func TestDeleteSnapshots_ByID(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	snap := &Snapshot{
+		TakenAt:    time.Now().UTC(),
+		Quote:      "USDT",
+		TotalValue: 1000,
+	}
+	id, err := store.SaveSnapshot(ctx, snap)
+	if err != nil {
+		t.Fatalf("SaveSnapshot: %v", err)
+	}
+
+	// Save more snapshots so the KeepLast=0 default (5) doesn't protect the first one.
+	for i := 0; i < 6; i++ {
+		snap2 := &Snapshot{
+			TakenAt:    time.Now().UTC().Add(time.Duration(i+1) * time.Hour),
+			Quote:      "USDT",
+			TotalValue: 2000,
+		}
+		store.SaveSnapshot(ctx, snap2)
+	}
+
+	n, err := store.DeleteSnapshots(ctx, DeleteFilter{ID: &id})
+	if err != nil {
+		t.Fatalf("DeleteSnapshots by ID: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 deleted, got %d", n)
+	}
+
+	_, err = store.GetSnapshot(ctx, id)
+	if err == nil {
+		t.Error("expected error for deleted snapshot")
+	}
+}

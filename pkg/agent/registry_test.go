@@ -6,6 +6,7 @@ import (
 
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
 	"github.com/cryptoquantumwave/khunquant/pkg/providers"
+	"github.com/cryptoquantumwave/khunquant/pkg/tools"
 )
 
 type mockRegistryProvider struct{}
@@ -201,5 +202,18 @@ func TestAgentInstance_FallbackExplicitEmpty(t *testing.T) {
 	agent, _ := registry.GetAgent("no-fallback")
 	if len(agent.Fallbacks) != 0 {
 		t.Errorf("expected 0 fallbacks (explicit empty), got %d: %v", len(agent.Fallbacks), agent.Fallbacks)
+	}
+}
+
+func TestAgentRegistry_ForEachTool_NotFound(t *testing.T) {
+	cfg := testCfg(nil)
+	registry := NewAgentRegistry(cfg, &mockRegistryProvider{})
+
+	called := 0
+	registry.ForEachTool("nonexistent-tool", func(_ tools.Tool) {
+		called++
+	})
+	if called != 0 {
+		t.Errorf("ForEachTool nonexistent: called %d times, want 0", called)
 	}
 }

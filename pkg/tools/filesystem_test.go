@@ -767,3 +767,63 @@ func TestReadFileTool_OffsetBeyondEOF(t *testing.T) {
 		t.Errorf("The message %q was expected, obtained: %q", expectedMsg, result.ForLLM)
 	}
 }
+
+func TestHostFs_Open_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "open_test.txt")
+	if err := os.WriteFile(testFile, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+	f, err := (&hostFs{}).Open(testFile)
+	assert.NoError(t, err)
+	if f != nil {
+		f.Close()
+	}
+}
+
+func TestHostFs_Open_NotFound(t *testing.T) {
+	_, err := (&hostFs{}).Open("/nonexistent/path/file.txt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "file not found")
+}
+
+func TestHostFs_Open_PermissionDenied(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("skipping permission test: running as root")
+	}
+	tmpDir := t.TempDir()
+	protected := filepath.Join(tmpDir, "protected.txt")
+	if err := os.WriteFile(protected, []byte("secret"), 0o000); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+	defer os.Chmod(protected, 0o644)
+	_, err := (&hostFs{}).Open(protected)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "access denied")
+}
+
+func TestSandboxFs_Open_Success(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "file.txt"), []byte("data"), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+	f, err := (&sandboxFs{workspace: workspace}).Open("file.txt")
+	assert.NoError(t, err)
+	if f != nil {
+		f.Close()
+	}
+}
+
+func TestSandboxFs_Open_NotFound(t *testing.T) {
+	workspace := t.TempDir()
+	_, err := (&sandboxFs{workspace: workspace}).Open("missing.txt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "file not found")
+}
+
+func TestSandboxFs_Execute_EmptyWorkspace(t *testing.T) {
+	sb := &sandboxFs{workspace: ""}
+	_, err := sb.ReadFile("anything.txt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "workspace is not defined")
+}

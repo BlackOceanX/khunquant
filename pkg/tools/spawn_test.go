@@ -96,3 +96,41 @@ func TestSpawnTool_Execute_NilManager(t *testing.T) {
 		t.Errorf("Error message should mention manager not configured, got: %s", result.ForLLM)
 	}
 }
+
+func TestSpawnTool_Name(t *testing.T) {
+	tool := NewSpawnTool(nil)
+	if tool.Name() != NameSpawn {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameSpawn)
+	}
+}
+
+func TestSpawnTool_Description(t *testing.T) {
+	tool := NewSpawnTool(nil)
+	if tool.Description() == "" {
+		t.Error("Description() should not be empty")
+	}
+}
+
+func TestSpawnTool_Parameters(t *testing.T) {
+	tool := NewSpawnTool(nil)
+	params := tool.Parameters()
+	if params == nil {
+		t.Fatal("Parameters() should not be nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("Parameters() type = %v, want object", params["type"])
+	}
+}
+
+func TestSpawnTool_SetAllowlistChecker(t *testing.T) {
+	tool := NewSpawnTool(nil)
+	tool.SetAllowlistChecker(func(targetAgentID string) bool { return true })
+}
+
+func TestSpawnTool_ExecuteAsync_NilManager(t *testing.T) {
+	tool := NewSpawnTool(nil)
+	result := tool.ExecuteAsync(context.Background(), map[string]any{"task": "test"}, nil)
+	if !result.IsError {
+		t.Error("expected error when manager is nil")
+	}
+}

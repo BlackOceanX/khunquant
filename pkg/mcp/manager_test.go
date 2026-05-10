@@ -2,10 +2,12 @@ package mcp
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -304,5 +306,196 @@ func TestClose_IdempotentOnEmptyManager(t *testing.T) {
 	}
 	if err := mgr.Close(); err != nil {
 		t.Fatalf("second close should be idempotent, got: %v", err)
+	}
+}
+
+// TestRoundTrip tests the headerTransport RoundTrip method
+func TestHeaderTransport_RoundTrip(t *testing.T) {
+	// Create a mock transport for testing
+	mockTransport := &mockHTTPTransport{
+		roundTripFunc: func(req *http.Request) (*http.Response, error) {
+			// Check that headers were added before this is called
+			if req.Header.Get("X-Custom") != "value" {
+				t.Error("expected X-Custom header to be set")
+			}
+			return &http.Response{StatusCode: 200}, nil
+		},
+	}
+
+	// Create headerTransport with the mock
+	transport := &headerTransport{
+		base: mockTransport,
+		headers: map[string]string{
+			"X-Custom": "value",
+		},
+	}
+
+	// Create a test request
+	req, err := http.NewRequest("GET", "http://example.com", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+
+	// Call RoundTrip
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip failed: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected response, got nil")
+	}
+}
+
+// mockHTTPTransport implements http.RoundTripper for testing
+type mockHTTPTransport struct {
+	roundTripFunc func(*http.Request) (*http.Response, error)
+}
+
+func (m *mockHTTPTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if m.roundTripFunc != nil {
+		return m.roundTripFunc(req)
+	}
+	return &http.Response{StatusCode: 200}, nil
+}
+
+// TestLoadFromConfig tests the LoadFromConfig method
+func TestLoadFromConfig(t *testing.T) {
+	mgr := NewManager()
+	tmpDir := t.TempDir()
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace: tmpDir,
+			},
+		},
+		Tools: config.ToolsConfig{
+			MCP: config.MCPConfig{
+				ToolConfig: config.ToolConfig{
+					Enabled: false, // Disabled, so no servers to load
+				},
+			},
+		},
+	}
+
+	err := mgr.LoadFromConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("LoadFromConfig failed: %v", err)
+	}
+
+	if len(mgr.GetServers()) != 0 {
+		t.Fatalf("expected no servers with MCP disabled, got %d", len(mgr.GetServers()))
+	}
+}
+
+// TestConnectServer tests ConnectServer error handling
+func TestConnectServer_Errors(t *testing.T) {
+	mgr := NewManager()
+
+	tests := []struct {
+		name    string
+		cfg     config.MCPServerConfig
+		wantErr string
+	}{
+		{
+			name:    "no URL and no command",
+			cfg:     config.MCPServerConfig{Type: ""},
+			wantErr: "either URL or command must be provided",
+		},
+		{
+			name:    "SSE without URL",
+			cfg:     config.MCPServerConfig{Type: "sse"},
+			wantErr: "URL is required for SSE/HTTP transport",
+		},
+		{
+			name:    "stdio without command",
+			cfg:     config.MCPServerConfig{Type: "stdio"},
+			wantErr: "command is required for stdio transport",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := mgr.ConnectServer(context.Background(), "test-server", tt.cfg)
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got: %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestConnectServer_UnsupportedTransportType(t *testing.T) {
+	mgr := NewManager()
+	cfg := config.MCPServerConfig{Type: "grpc", URL: "http://localhost:8080"}
+	err := mgr.ConnectServer(context.Background(), "test-server", cfg)
+	if err == nil {
+		t.Fatal("unsupported transport type should return error")
+	}
+	if !strings.Contains(err.Error(), "unsupported transport type") {
+		t.Errorf("expected 'unsupported transport type' error, got: %v", err)
+	}
+}
+
+func TestConnectServer_SSEAutoDetect_FailsAtConnect(t *testing.T) {
+	mgr := NewManager()
+	cfg := config.MCPServerConfig{URL: "http://localhost:19999/mcp/invalid-endpoint-test"}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	err := mgr.ConnectServer(ctx, "autodetect-server", cfg)
+	// Expected to fail at client.Connect since no server is listening — but SSE path is covered
+	if err == nil {
+		t.Error("ConnectServer SSE without real server should fail (no server running)")
+	}
+}
+
+func TestConnectServer_SSE_WithHeaders_FailsAtConnect(t *testing.T) {
+	mgr := NewManager()
+	cfg := config.MCPServerConfig{
+		Type:    "sse",
+		URL:     "http://localhost:19999/mcp/invalid-headers-test",
+		Headers: map[string]string{"Authorization": "Bearer test-token"},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	err := mgr.ConnectServer(ctx, "header-server", cfg)
+	// Expected to fail at client.Connect — headers path is covered
+	if err == nil {
+		t.Error("ConnectServer SSE with headers but no real server should fail")
+	}
+}
+
+func TestCallTool_ManagerClosed(t *testing.T) {
+	mgr := NewManager()
+	mgr.closed.Store(true)
+	_, err := mgr.CallTool(context.Background(), "server", "tool", nil)
+	if err == nil {
+		t.Error("CallTool on closed manager should return error")
+	}
+}
+
+func TestLoadFromMCPConfig_DisabledMCP(t *testing.T) {
+	mgr := NewManager()
+	cfg := config.MCPConfig{}
+	cfg.ToolConfig.Enabled = false
+	err := mgr.LoadFromMCPConfig(context.Background(), cfg, "")
+	if err != nil {
+		t.Errorf("LoadFromMCPConfig disabled should return nil, got: %v", err)
+	}
+}
+
+func TestLoadFromMCPConfig_AllServersDisabled(t *testing.T) {
+	mgr := NewManager()
+	cfg := config.MCPConfig{
+		Servers: map[string]config.MCPServerConfig{
+			"s1": {Enabled: false, Command: "echo"},
+		},
+	}
+	cfg.ToolConfig.Enabled = true
+	err := mgr.LoadFromMCPConfig(context.Background(), cfg, t.TempDir())
+	if err != nil {
+		t.Errorf("LoadFromMCPConfig all disabled should return nil, got: %v", err)
 	}
 }

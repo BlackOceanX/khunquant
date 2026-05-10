@@ -97,3 +97,42 @@ func TestListDCAPlans_FilterDisabled(t *testing.T) {
 		t.Error("expected Disabled-Only in filtered output")
 	}
 }
+
+func TestListDCAPlansTool_Name(t *testing.T) {
+	tool := NewListDCAPlansTool(newTestDCAStore(t))
+	if tool.Name() != NameListDCAPlans {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameListDCAPlans)
+	}
+}
+
+func TestListDCAPlansTool_Description(t *testing.T) {
+	tool := NewListDCAPlansTool(newTestDCAStore(t))
+	desc := tool.Description()
+	if desc == "" {
+		t.Fatal("Description() should not be empty")
+	}
+	if !strings.Contains(desc, "DCA") {
+		t.Errorf("Description should mention DCA, got: %s", desc)
+	}
+}
+
+func TestListDCAPlansTool_Parameters(t *testing.T) {
+	tool := NewListDCAPlansTool(newTestDCAStore(t))
+	params := tool.Parameters()
+
+	if params == nil {
+		t.Fatal("Parameters() should not return nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("type should be 'object', got %q", params["type"])
+	}
+
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties to be a map")
+	}
+
+	if _, ok := props["filter_enabled"]; !ok {
+		t.Error("expected property 'filter_enabled' in Parameters")
+	}
+}

@@ -781,6 +781,52 @@ func TestMultipleSessions_Isolation(t *testing.T) {
 	}
 }
 
+func TestListSessions_Empty(t *testing.T) {
+	store := newTestStore(t)
+	keys := store.ListSessions()
+	if len(keys) != 0 {
+		t.Errorf("expected empty ListSessions on fresh store, got %v", keys)
+	}
+}
+
+func TestListSessions_WithSessions(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	if err := store.AddMessage(ctx, "alice", "user", "hello"); err != nil {
+		t.Fatalf("AddMessage alice: %v", err)
+	}
+	if err := store.AddMessage(ctx, "bob", "user", "world"); err != nil {
+		t.Fatalf("AddMessage bob: %v", err)
+	}
+
+	keys := store.ListSessions()
+	if len(keys) != 2 {
+		t.Errorf("expected 2 sessions, got %d: %v", len(keys), keys)
+	}
+	found := map[string]bool{}
+	for _, k := range keys {
+		found[k] = true
+	}
+	if !found["alice"] || !found["bob"] {
+		t.Errorf("expected alice and bob in sessions, got %v", keys)
+	}
+}
+
+func TestListSessions_IgnoresNonMetaFiles(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	if err := store.AddMessage(ctx, "real", "user", "msg"); err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+
+	keys := store.ListSessions()
+	if len(keys) != 1 || keys[0] != "real" {
+		t.Errorf("expected [real], got %v", keys)
+	}
+}
+
 func BenchmarkAddMessage(b *testing.B) {
 	dir := b.TempDir()
 	store, err := NewJSONLStore(dir)

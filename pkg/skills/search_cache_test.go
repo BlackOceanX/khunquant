@@ -198,3 +198,34 @@ func TestSearchCacheLRUUpdateOnGet(t *testing.T) {
 		t.Fatal("query-B should have been evicted")
 	}
 }
+
+func TestNewSearchCache_DefaultsForZeroValues(t *testing.T) {
+	// maxEntries=0 and ttl=0 should fall back to defaults
+	cache := NewSearchCache(0, 0)
+	if cache == nil {
+		t.Fatal("expected non-nil cache")
+	}
+	if cache.maxEntries != 50 {
+		t.Errorf("maxEntries: got %d, want 50", cache.maxEntries)
+	}
+	if cache.ttl != 5*time.Minute {
+		t.Errorf("ttl: got %v, want 5m", cache.ttl)
+	}
+}
+
+func TestCopyResults_Nil(t *testing.T) {
+	got := copyResults(nil)
+	if got != nil {
+		t.Errorf("copyResults(nil) = %v, want nil", got)
+	}
+}
+
+func TestCopyResults_Empty(t *testing.T) {
+	got := copyResults([]SearchResult{})
+	if got == nil {
+		t.Error("copyResults([]) should return non-nil empty slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("copyResults([]) length = %d, want 0", len(got))
+	}
+}

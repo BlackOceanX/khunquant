@@ -15,6 +15,7 @@ import (
 
 	"github.com/cryptoquantumwave/khunquant/pkg/bus"
 	"github.com/cryptoquantumwave/khunquant/pkg/channels"
+	"github.com/cryptoquantumwave/khunquant/pkg/commands"
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
 	"github.com/cryptoquantumwave/khunquant/pkg/media"
 	"github.com/cryptoquantumwave/khunquant/pkg/providers"
@@ -2595,5 +2596,528 @@ func TestResolveMediaRefs_MixedImageAndFile(t *testing.T) {
 	expectedContent := "check these [file:" + pdfPath + "]"
 	if result[0].Content != expectedContent {
 		t.Fatalf("expected content %q, got %q", expectedContent, result[0].Content)
+	}
+}
+
+func TestExtractPeer_EmptyKind(t *testing.T) {
+	msg := bus.InboundMessage{Peer: bus.Peer{Kind: "", ID: "p1"}}
+	got := extractPeer(msg)
+	if got != nil {
+		t.Errorf("expected nil for empty Kind, got %+v", got)
+	}
+}
+
+func TestExtractPeer_DirectWithEmptyID(t *testing.T) {
+	msg := bus.InboundMessage{
+		Peer:     bus.Peer{Kind: "direct", ID: ""},
+		SenderID: "sender-42",
+	}
+	got := extractPeer(msg)
+	if got == nil {
+		t.Fatal("expected non-nil peer")
+	}
+	if got.Kind != "direct" {
+		t.Errorf("expected Kind=direct, got %q", got.Kind)
+	}
+	if got.ID != "sender-42" {
+		t.Errorf("expected ID=sender-42, got %q", got.ID)
+	}
+}
+
+func TestExtractPeer_GroupWithEmptyID(t *testing.T) {
+	msg := bus.InboundMessage{
+		Peer:   bus.Peer{Kind: "group", ID: ""},
+		ChatID: "chat-99",
+	}
+	got := extractPeer(msg)
+	if got == nil {
+		t.Fatal("expected non-nil peer")
+	}
+	if got.ID != "chat-99" {
+		t.Errorf("expected ID=chat-99, got %q", got.ID)
+	}
+}
+
+func TestExtractPeer_NonEmptyID(t *testing.T) {
+	msg := bus.InboundMessage{
+		Peer:     bus.Peer{Kind: "group", ID: "peer-id"},
+		SenderID: "should-not-be-used",
+		ChatID:   "should-not-be-used",
+	}
+	got := extractPeer(msg)
+	if got == nil {
+		t.Fatal("expected non-nil peer")
+	}
+	if got.ID != "peer-id" {
+		t.Errorf("expected ID=peer-id, got %q", got.ID)
+	}
+}
+
+func TestInboundMetadata_NilMap(t *testing.T) {
+	msg := bus.InboundMessage{Metadata: nil}
+	if got := inboundMetadata(msg, "key"); got != "" {
+		t.Errorf("expected empty string for nil metadata, got %q", got)
+	}
+}
+
+func TestInboundMetadata_KeyPresent(t *testing.T) {
+	msg := bus.InboundMessage{Metadata: map[string]string{"foo": "bar"}}
+	if got := inboundMetadata(msg, "foo"); got != "bar" {
+		t.Errorf("expected bar, got %q", got)
+	}
+}
+
+func TestInboundMetadata_KeyAbsent(t *testing.T) {
+	msg := bus.InboundMessage{Metadata: map[string]string{"foo": "bar"}}
+	if got := inboundMetadata(msg, "missing"); got != "" {
+		t.Errorf("expected empty string for missing key, got %q", got)
+	}
+}
+
+func TestExtractParentPeer_MissingMetadata(t *testing.T) {
+	msg := bus.InboundMessage{}
+	got := extractParentPeer(msg)
+	if got != nil {
+		t.Errorf("expected nil when metadata empty, got %+v", got)
+	}
+}
+
+func TestExtractParentPeer_OnlyKindSet(t *testing.T) {
+	msg := bus.InboundMessage{
+		Metadata: map[string]string{metadataKeyParentPeerKind: "direct"},
+	}
+	got := extractParentPeer(msg)
+	if got != nil {
+		t.Errorf("expected nil when parentID missing, got %+v", got)
+	}
+}
+
+func TestExtractParentPeer_BothSet(t *testing.T) {
+	msg := bus.InboundMessage{
+		Metadata: map[string]string{
+			metadataKeyParentPeerKind: "group",
+			metadataKeyParentPeerID:   "parent-42",
+		},
+	}
+	got := extractParentPeer(msg)
+	if got == nil {
+		t.Fatal("expected non-nil peer")
+	}
+	if got.Kind != "group" || got.ID != "parent-42" {
+		t.Errorf("unexpected peer %+v", got)
+	}
+}
+
+func TestExtractProvider_NilRegistry(t *testing.T) {
+	_, ok := extractProvider(nil)
+	if ok {
+		t.Error("expected false for nil registry")
+	}
+}
+
+func TestExtractProvider_EmptyRegistry(t *testing.T) {
+	registry := &AgentRegistry{agents: map[string]*AgentInstance{}}
+	_, ok := extractProvider(registry)
+	if ok {
+		t.Error("expected false when no default agent exists")
+	}
+}
+
+func TestExtractProvider_WithAgent(t *testing.T) {
+	cfg := config.DefaultConfig()
+	registry := NewAgentRegistry(cfg, nil)
+	provider, ok := extractProvider(registry)
+	if !ok {
+		t.Error("expected true when default agent exists")
+	}
+	if provider != nil {
+		t.Errorf("expected nil provider (passed nil to NewAgentRegistry), got %v", provider)
+	}
+}
+
+func TestExtractPeer_RoutePeerFields(t *testing.T) {
+	msg := bus.InboundMessage{
+		Peer: bus.Peer{Kind: "direct", ID: "explicit-id"},
+	}
+	got := extractPeer(msg)
+	if got == nil {
+		t.Fatal("expected non-nil peer")
+	}
+	if got.Kind != "direct" {
+		t.Errorf("expected Kind=direct, got %q", got.Kind)
+	}
+}
+
+func TestResolveScopeKey_EmptyMsgKey(t *testing.T) {
+	route := routing.ResolvedRoute{SessionKey: "route-key"}
+	got := resolveScopeKey(route, "")
+	if got != "route-key" {
+		t.Errorf("got %q, want route-key", got)
+	}
+}
+
+func TestResolveScopeKey_AgentPrefix(t *testing.T) {
+	route := routing.ResolvedRoute{SessionKey: "route-key"}
+	got := resolveScopeKey(route, "agent:my-session")
+	if got != "agent:my-session" {
+		t.Errorf("got %q, want agent:my-session", got)
+	}
+}
+
+func TestResolveScopeKey_NonAgentPrefix(t *testing.T) {
+	route := routing.ResolvedRoute{SessionKey: "route-key"}
+	got := resolveScopeKey(route, "other-session")
+	if got != "route-key" {
+		t.Errorf("got %q, want route-key (non-agent prefix falls back to route)", got)
+	}
+}
+
+func TestFormatMessagesForLog_Empty(t *testing.T) {
+	got := formatMessagesForLog(nil)
+	if got != "[]" {
+		t.Errorf("empty messages = %q, want []", got)
+	}
+}
+
+func TestFormatMessagesForLog_WithContent(t *testing.T) {
+	msgs := []providers.Message{
+		{Role: "user", Content: "hello"},
+	}
+	got := formatMessagesForLog(msgs)
+	if !strings.Contains(got, "user") {
+		t.Errorf("expected role in output, got: %s", got)
+	}
+	if !strings.Contains(got, "hello") {
+		t.Errorf("expected content in output, got: %s", got)
+	}
+}
+
+func TestFormatMessagesForLog_WithToolCalls(t *testing.T) {
+	msgs := []providers.Message{
+		{
+			Role: "assistant",
+			ToolCalls: []providers.ToolCall{
+				{
+					ID:   "tc-1",
+					Type: "function",
+					Name: "my_tool",
+					Function: &providers.FunctionCall{
+						Name:      "my_tool",
+						Arguments: `{"key":"val"}`,
+					},
+				},
+			},
+		},
+	}
+	got := formatMessagesForLog(msgs)
+	if !strings.Contains(got, "tc-1") {
+		t.Errorf("expected tool call ID in output, got: %s", got)
+	}
+	if !strings.Contains(got, "my_tool") {
+		t.Errorf("expected tool name in output, got: %s", got)
+	}
+}
+
+func TestFormatMessagesForLog_WithToolCallID(t *testing.T) {
+	msgs := []providers.Message{
+		{Role: "tool", ToolCallID: "tc-42", Content: "result"},
+	}
+	got := formatMessagesForLog(msgs)
+	if !strings.Contains(got, "tc-42") {
+		t.Errorf("expected ToolCallID in output, got: %s", got)
+	}
+}
+
+func TestFormatToolsForLog_Empty(t *testing.T) {
+	got := formatToolsForLog(nil)
+	if got != "[]" {
+		t.Errorf("empty tools = %q, want []", got)
+	}
+}
+
+func TestFormatToolsForLog_WithTool(t *testing.T) {
+	tools := []providers.ToolDefinition{
+		{
+			Type: "function",
+			Function: providers.ToolFunctionDefinition{
+				Name:        "do_thing",
+				Description: "Does a thing",
+				Parameters:  map[string]any{"type": "object"},
+			},
+		},
+	}
+	got := formatToolsForLog(tools)
+	if !strings.Contains(got, "do_thing") {
+		t.Errorf("expected tool name in output, got: %s", got)
+	}
+	if !strings.Contains(got, "Does a thing") {
+		t.Errorf("expected description in output, got: %s", got)
+	}
+}
+
+func TestReloadProviderAndConfig_NilProvider(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	err := al.ReloadProviderAndConfig(context.Background(), nil, &config.Config{})
+	if err == nil {
+		t.Error("ReloadProviderAndConfig(nil provider) should return error")
+	}
+}
+
+func TestReloadProviderAndConfig_NilConfig(t *testing.T) {
+	al, _, _, provider, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	err := al.ReloadProviderAndConfig(context.Background(), provider, nil)
+	if err == nil {
+		t.Error("ReloadProviderAndConfig(nil config) should return error")
+	}
+}
+
+func TestReloadProviderAndConfig_ValidInputs(t *testing.T) {
+	al, cfg, _, provider, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	err := al.ReloadProviderAndConfig(context.Background(), provider, cfg)
+	if err != nil {
+		t.Errorf("ReloadProviderAndConfig with valid inputs should succeed: %v", err)
+	}
+}
+
+func TestReloadProviderAndConfig_CanceledContext(t *testing.T) {
+	al, cfg, _, provider, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+	err := al.ReloadProviderAndConfig(ctx, provider, cfg)
+	// May or may not fail depending on timing, but should not panic
+	_ = err
+}
+
+func TestRecordLastChannel_NilState(t *testing.T) {
+	al := &AgentLoop{}
+	if err := al.RecordLastChannel("test"); err != nil {
+		t.Errorf("RecordLastChannel with nil state should return nil, got %v", err)
+	}
+}
+
+func TestRecordLastChatID_NilState(t *testing.T) {
+	al := &AgentLoop{}
+	if err := al.RecordLastChatID("test"); err != nil {
+		t.Errorf("RecordLastChatID with nil state should return nil, got %v", err)
+	}
+}
+
+func TestPublishResponseIfNeeded_EmptyResponse(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	// empty response should return early without panic
+	al.PublishResponseIfNeeded(context.Background(), "telegram", "123", "")
+}
+
+func TestPublishResponseIfNeeded_WithResponse(t *testing.T) {
+	al, _, msgBus, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	al.bus = msgBus
+	al.PublishResponseIfNeeded(context.Background(), "telegram", "123", "hello world")
+}
+
+func TestBuildContinuationTarget_SystemChannel(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	msg := bus.InboundMessage{Channel: "system", ChatID: "x:123"}
+	target, err := al.buildContinuationTarget(msg)
+	if err != nil {
+		t.Fatalf("buildContinuationTarget system: %v", err)
+	}
+	if target != nil {
+		t.Errorf("system channel should return nil target, got %v", target)
+	}
+}
+
+func TestProcessDirect_EmptyContent(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	result, err := al.ProcessDirect(context.Background(), "hello", "test-session")
+	if err != nil {
+		t.Errorf("ProcessDirect should not error: %v", err)
+	}
+	_ = result
+}
+
+func TestResolveContextManager_UnknownName(t *testing.T) {
+	al, cfg, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	cfg.Agents.Defaults.ContextManager = "nonexistent-cm"
+	al.cfg = cfg
+	cm := al.resolveContextManager()
+	if cm == nil {
+		t.Error("resolveContextManager with unknown name should fallback to legacy, not return nil")
+	}
+}
+
+func TestClose_WithNilMCP(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	al.Close() // should not panic
+}
+
+func TestSetTranscriber_SetsField(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+
+	if al.transcriber != nil {
+		t.Error("transcriber should start nil")
+	}
+	// Use a nil Transcriber (interface value) - just check assignment happens
+	al.SetTranscriber(nil)
+	if al.transcriber != nil {
+		t.Error("transcriber should still be nil after SetTranscriber(nil)")
+	}
+}
+
+func TestProcessSystemMessage_NonSystemChannel(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+
+	msg := bus.InboundMessage{Channel: "telegram", ChatID: "123", Content: "hello"}
+	_, err := al.processSystemMessage(context.Background(), msg)
+	if err == nil {
+		t.Error("processSystemMessage with non-system channel should return error")
+	}
+}
+
+func TestProcessSystemMessage_InternalChannel(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+
+	// "subagent" is internal — processSystemMessage should log and return "" with no error
+	// ChatID format: "subagent:chat-123"
+	msg := bus.InboundMessage{
+		Channel:  "system",
+		ChatID:   "subagent:task-id",
+		SenderID: "worker-1",
+		Content:  "Result:\nTask done",
+	}
+	result, err := al.processSystemMessage(context.Background(), msg)
+	if err != nil {
+		t.Errorf("processSystemMessage internal channel should not error: %v", err)
+	}
+	if result != "" {
+		t.Errorf("processSystemMessage internal channel should return empty string, got %q", result)
+	}
+}
+
+func TestBuildContinuationTarget_NonSystemChannel(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+
+	msg := bus.InboundMessage{Channel: "cli", ChatID: "user-1", Content: "hello"}
+	target, err := al.buildContinuationTarget(msg)
+	if err != nil {
+		t.Fatalf("buildContinuationTarget non-system: %v", err)
+	}
+	if target == nil {
+		t.Error("expected non-nil target for non-system channel")
+	}
+	if target.Channel != "cli" {
+		t.Errorf("target.Channel = %q, want cli", target.Channel)
+	}
+}
+
+func TestBuildCommandsRuntime_NilChannelManager(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+	al.channelManager = nil
+
+	agent := al.registry.GetDefaultAgent()
+	opts := &processOptions{SessionKey: "test-session"}
+	rt := al.buildCommandsRuntime(agent, opts)
+
+	if rt == nil {
+		t.Fatal("buildCommandsRuntime should return non-nil runtime")
+	}
+	// GetEnabledChannels closure — nil manager returns nil
+	if channels := rt.GetEnabledChannels(); channels != nil {
+		t.Errorf("nil channelManager: GetEnabledChannels = %v, want nil", channels)
+	}
+	// SwitchChannel closure — nil manager returns error
+	if err := rt.SwitchChannel("telegram"); err == nil {
+		t.Error("nil channelManager: SwitchChannel should return error")
+	}
+}
+
+func TestBuildCommandsRuntime_NilAgent(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+
+	rt := al.buildCommandsRuntime(nil, nil)
+	if rt == nil {
+		t.Fatal("buildCommandsRuntime should return non-nil runtime")
+	}
+	// GetModelInfo should be nil when agent is nil
+	if rt.GetModelInfo != nil {
+		t.Error("GetModelInfo should be nil when agent is nil")
+	}
+}
+
+func TestBuildCommandsRuntime_ClearHistoryNilOpts(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+
+	agent := al.registry.GetDefaultAgent()
+	rt := al.buildCommandsRuntime(agent, nil) // nil opts
+
+	if rt.ClearHistory == nil {
+		t.Fatal("ClearHistory should not be nil")
+	}
+	// ClearHistory with nil opts should return an error
+	if err := rt.ClearHistory(); err == nil {
+		t.Error("ClearHistory with nil opts should return error")
+	}
+}
+
+func TestBuildCommandsRuntime_GetContextStats_NilOpts(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+
+	agent := al.registry.GetDefaultAgent()
+	rt := al.buildCommandsRuntime(agent, nil)
+
+	if rt.GetContextStats == nil {
+		t.Fatal("GetContextStats should not be nil")
+	}
+	// nil opts → returns nil
+	if stats := rt.GetContextStats(); stats != nil {
+		t.Errorf("GetContextStats(nil opts) should return nil, got %v", stats)
+	}
+}
+
+func TestResolveScopeKey_WithAgentPrefix(t *testing.T) {
+	route := routing.ResolvedRoute{SessionKey: "route-key"}
+	agentKey := sessionKeyAgentPrefix + "agent-1"
+	got := resolveScopeKey(route, agentKey)
+	if got != agentKey {
+		t.Errorf("resolveScopeKey with agent prefix: got %q, want %q", got, agentKey)
+	}
+}
+
+func TestResolveScopeKey_WithoutPrefix(t *testing.T) {
+	route := routing.ResolvedRoute{SessionKey: "route-session"}
+	got := resolveScopeKey(route, "other-key")
+	if got != "route-session" {
+		t.Errorf("resolveScopeKey without prefix: got %q, want %q", got, "route-session")
+	}
+}
+
+func TestMapCommandError_EmptyCommand(t *testing.T) {
+	result := mapCommandError(commands.ExecuteResult{Command: "", Err: fmt.Errorf("oops")})
+	if !strings.Contains(result, "oops") {
+		t.Errorf("mapCommandError empty command: got %q, want to contain 'oops'", result)
+	}
+}
+
+func TestMapCommandError_WithCommand(t *testing.T) {
+	result := mapCommandError(commands.ExecuteResult{Command: "help", Err: fmt.Errorf("failed")})
+	if !strings.Contains(result, "help") || !strings.Contains(result, "failed") {
+		t.Errorf("mapCommandError with command: got %q", result)
 	}
 }

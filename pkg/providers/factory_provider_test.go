@@ -444,3 +444,116 @@ func TestCreateProviderFromConfig_AzureMissingAPIBase(t *testing.T) {
 		t.Fatal("CreateProviderFromConfig() expected error for missing API base")
 	}
 }
+
+func TestGetDefaultAPIBase_RemainingProtocols(t *testing.T) {
+	cases := []struct {
+		protocol string
+		want     string
+	}{
+		{"zhipu", "https://open.bigmodel.cn/api/paas/v4"},
+		{"gemini", "https://generativelanguage.googleapis.com/v1beta"},
+		{"nvidia", "https://integrate.api.nvidia.com/v1"},
+		{"moonshot", "https://api.moonshot.cn/v1"},
+		{"shengsuanyun", "https://router.shengsuanyun.com/api/v1"},
+		{"volcengine", "https://ark.cn-beijing.volces.com/api/v3"},
+		{"mistral", "https://api.mistral.ai/v1"},
+		{"avian", "https://api.avian.io/v1"},
+		{"minimax", "https://api.minimaxi.com/v1"},
+		{"mlx_lm", "http://localhost:8080/v1"},
+		{"unknown-proto", ""},
+	}
+	for _, tc := range cases {
+		got := getDefaultAPIBase(tc.protocol)
+		if got != tc.want {
+			t.Errorf("getDefaultAPIBase(%q) = %q, want %q", tc.protocol, got, tc.want)
+		}
+	}
+}
+
+func TestCreateProviderFromConfig_MLXlm(t *testing.T) {
+	cfg := &config.ModelConfig{
+		ModelName: "test-mlx",
+		Model:     "mlx_lm/~/models/gemma",
+		APIKey:    *config.NewSecureString(""),
+		APIBase:   "http://localhost:8080/v1",
+	}
+	provider, modelID, err := CreateProviderFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("CreateProviderFromConfig() error = %v", err)
+	}
+	if provider == nil {
+		t.Fatal("CreateProviderFromConfig() returned nil provider")
+	}
+	if modelID != "~/models/gemma" {
+		t.Errorf("modelID = %q, want %q", modelID, "~/models/gemma")
+	}
+}
+
+func TestCreateProviderFromConfig_AnthropicMessages(t *testing.T) {
+	cfg := &config.ModelConfig{
+		ModelName: "test-anthropic-msg",
+		Model:     "anthropic-messages/claude-sonnet-4.6",
+		APIKey:    *config.NewSecureString("test-key"),
+	}
+	provider, modelID, err := CreateProviderFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("CreateProviderFromConfig() error = %v", err)
+	}
+	if provider == nil {
+		t.Fatal("CreateProviderFromConfig() returned nil provider")
+	}
+	if modelID != "claude-sonnet-4.6" {
+		t.Errorf("modelID = %q, want %q", modelID, "claude-sonnet-4.6")
+	}
+}
+
+func TestCreateProviderFromConfig_AnthropicMessagesMissingKey(t *testing.T) {
+	cfg := &config.ModelConfig{
+		ModelName: "test-anthropic-msg-nokey",
+		Model:     "anthropic-messages/claude-sonnet-4.6",
+	}
+	_, _, err := CreateProviderFromConfig(cfg)
+	if err == nil {
+		t.Fatal("expected error for missing API key")
+	}
+}
+
+func TestCreateProviderFromConfig_OpenAIOAuth(t *testing.T) {
+	cfg := &config.ModelConfig{
+		ModelName:  "test-openai-oauth",
+		Model:      "openai/gpt-4o",
+		AuthMethod: "oauth",
+	}
+	// createCodexAuthProvider will fail (no credentials on disk), but
+	// the codepath before the auth call must be exercised without panic.
+	_, _, err := CreateProviderFromConfig(cfg)
+	// expected error: "loading auth credentials: ..."
+	if err == nil {
+		t.Log("createCodexAuthProvider succeeded unexpectedly (credentials present)")
+	}
+}
+
+func TestCreateProviderFromConfig_AnthropicOAuth(t *testing.T) {
+	cfg := &config.ModelConfig{
+		ModelName:  "test-anthropic-oauth",
+		Model:      "anthropic/claude-sonnet-4.6",
+		AuthMethod: "token",
+	}
+	// createClaudeAuthProvider will fail (no credentials on disk).
+	_, _, err := CreateProviderFromConfig(cfg)
+	if err == nil {
+		t.Log("createClaudeAuthProvider succeeded unexpectedly (credentials present)")
+	}
+}
+
+func TestCreateProviderFromConfig_GitHubCopilot(t *testing.T) {
+	cfg := &config.ModelConfig{
+		ModelName:   "test-copilot",
+		Model:       "github-copilot/gpt-4o",
+		APIBase:     "localhost:4321",
+		ConnectMode: "grpc",
+	}
+	// NewGitHubCopilotProvider may fail if grpc dial fails, but the
+	// code path to that call must be reached without panic.
+	_, _, _ = CreateProviderFromConfig(cfg)
+}

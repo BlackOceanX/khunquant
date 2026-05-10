@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -499,5 +500,242 @@ func TestSetCredentialCanonicalizesTrimmedMixedCaseProvider(t *testing.T) {
 	}
 	if got.Provider != "google-antigravity" {
 		t.Fatalf("GetCredential provider = %q, want %q", got.Provider, "google-antigravity")
+	}
+}
+
+// TestDeleteAllCredentials tests the DeleteAllCredentials function
+func TestDeleteAllCredentials(t *testing.T) {
+	tmpDir := setTestAuthHome(t)
+
+	cred := &AuthCredential{AccessToken: "to-delete", Provider: "openai", AuthMethod: "oauth"}
+	if err := SetCredential("openai", cred); err != nil {
+		t.Fatalf("SetCredential() error: %v", err)
+	}
+
+	// Verify file exists
+	path := filepath.Join(tmpDir, ".khunquant", "auth.json")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Fatal("auth.json should exist before DeleteAllCredentials")
+	}
+
+	// Delete all credentials
+	if err := DeleteAllCredentials(); err != nil {
+		t.Fatalf("DeleteAllCredentials() error: %v", err)
+	}
+
+	// Verify file no longer exists
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("auth.json should not exist after DeleteAllCredentials")
+	}
+
+	// Verify store is empty after reload
+	store, err := LoadStore()
+	if err != nil {
+		t.Fatalf("LoadStore() error: %v", err)
+	}
+	if len(store.Credentials) != 0 {
+		t.Errorf("expected empty credentials after DeleteAllCredentials, got %d", len(store.Credentials))
+	}
+}
+
+// TestDeleteAllCredentials_NoFile tests DeleteAllCredentials when no file exists
+func TestDeleteAllCredentials_NoFile(t *testing.T) {
+	setTestAuthHome(t)
+
+	// Should not error if file doesn't exist
+	if err := DeleteAllCredentials(); err != nil {
+		t.Fatalf("DeleteAllCredentials() should not error when file missing: %v", err)
+	}
+}
+
+// TestAuthFilePath tests authFilePath with and without KHUNQUANT_HOME
+func TestAuthFilePath(t *testing.T) {
+	t.Run("with KHUNQUANT_HOME", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("KHUNQUANT_HOME", tmpDir)
+
+		path := authFilePath()
+		expected := filepath.Join(tmpDir, "auth.json")
+		if path != expected {
+			t.Errorf("authFilePath() = %q, want %q", path, expected)
+		}
+	})
+
+	t.Run("without KHUNQUANT_HOME", func(t *testing.T) {
+		t.Setenv("KHUNQUANT_HOME", "")
+
+		path := authFilePath()
+		if !strings.Contains(path, ".khunquant") || !strings.HasSuffix(path, "auth.json") {
+			t.Errorf("authFilePath() = %q, should contain .khunquant and end with auth.json", path)
+		}
+	})
+}
+
+// TestShouldPreferCredential tests the shouldPreferCredential function
+func TestShouldPreferCredential(t *testing.T) {
+	tests := []struct {
+		name              string
+		candidate         *AuthCredential
+		candidateCanonical bool
+		current           *AuthCredential
+		currentCanonical  bool
+		want              bool
+	}{
+		{
+			name:              "candidate nil",
+			candidate:         nil,
+			candidateCanonical: true,
+			current:           &AuthCredential{},
+			currentCanonical:  false,
+			want:              false,
+		},
+		{
+			name:              "current nil",
+			candidate:         &AuthCredential{},
+			candidateCanonical: false,
+			current:           nil,
+			currentCanonical:  false,
+			want:              true,
+		},
+		{
+			name:              "candidate newer expiry",
+			candidate:         &AuthCredential{ExpiresAt: time.Now().Add(2 * time.Hour)},
+			candidateCanonical: false,
+			current:           &AuthCredential{ExpiresAt: time.Now().Add(1 * time.Hour)},
+			currentCanonical:  false,
+			want:              true,
+		},
+		{
+			name:              "current newer expiry",
+			candidate:         &AuthCredential{ExpiresAt: time.Now().Add(1 * time.Hour)},
+			candidateCanonical: false,
+			current:           &AuthCredential{ExpiresAt: time.Now().Add(2 * time.Hour)},
+			currentCanonical:  false,
+			want:              false,
+		},
+		{
+			name:              "same expiry, candidate canonical",
+			candidate:         &AuthCredential{ExpiresAt: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)},
+			candidateCanonical: true,
+			current:           &AuthCredential{ExpiresAt: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)},
+			currentCanonical:  false,
+			want:              true,
+		},
+		{
+			name:              "same expiry, current canonical",
+			candidate:         &AuthCredential{ExpiresAt: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)},
+			candidateCanonical: false,
+			current:           &AuthCredential{ExpiresAt: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)},
+			currentCanonical:  true,
+			want:              false,
+		},
+		{
+			name:              "both canonical and same expiry",
+			candidate:         &AuthCredential{ExpiresAt: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)},
+			candidateCanonical: true,
+			current:           &AuthCredential{ExpiresAt: time.Date(2026, 5, 9, 12, 0, 0, 0, time.UTC)},
+			currentCanonical:  true,
+			want:              false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldPreferCredential(tt.candidate, tt.candidateCanonical, tt.current, tt.currentCanonical)
+			if got != tt.want {
+				t.Errorf("shouldPreferCredential() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCloneCredential_Nil(t *testing.T) {
+	if cloneCredential(nil) != nil {
+		t.Error("cloneCredential(nil) should return nil")
+	}
+}
+
+func TestCloneCredential_NonNil(t *testing.T) {
+	cred := &AuthCredential{Provider: "openai", AccessToken: "tok"}
+	got := cloneCredential(cred)
+	if got == cred {
+		t.Error("cloneCredential should return a copy, not the same pointer")
+	}
+	if got.Provider != "openai" || got.AccessToken != "tok" {
+		t.Errorf("cloneCredential = %+v, want same values", got)
+	}
+}
+
+func TestMergeCredentials_BothNil(t *testing.T) {
+	if mergeCredentials(nil, nil) != nil {
+		t.Error("mergeCredentials(nil, nil) should return nil")
+	}
+}
+
+func TestMergeCredentials_PrimaryNil(t *testing.T) {
+	secondary := &AuthCredential{Provider: "openai", AccessToken: "secondary-tok"}
+	got := mergeCredentials(nil, secondary)
+	if got == nil {
+		t.Fatal("mergeCredentials(nil, secondary) should not be nil")
+	}
+	if got.AccessToken != "secondary-tok" {
+		t.Errorf("mergeCredentials nil primary: AccessToken = %q, want secondary-tok", got.AccessToken)
+	}
+}
+
+func TestMergeCredentials_SecondaryNil(t *testing.T) {
+	primary := &AuthCredential{Provider: "openai", AccessToken: "primary-tok"}
+	got := mergeCredentials(primary, nil)
+	if got == nil {
+		t.Fatal("mergeCredentials(primary, nil) should not be nil")
+	}
+	if got.AccessToken != "primary-tok" {
+		t.Errorf("mergeCredentials nil secondary: AccessToken = %q, want primary-tok", got.AccessToken)
+	}
+}
+
+func TestMergeCredentials_FillsFromSecondary(t *testing.T) {
+	primary := &AuthCredential{Provider: "openai", AccessToken: "primary-tok"}
+	secondary := &AuthCredential{Provider: "openai", RefreshToken: "refresh-tok", AccountID: "acct"}
+	got := mergeCredentials(primary, secondary)
+	if got.AccessToken != "primary-tok" {
+		t.Errorf("mergeCredentials should keep primary AccessToken, got %q", got.AccessToken)
+	}
+	if got.RefreshToken != "refresh-tok" {
+		t.Errorf("mergeCredentials should fill empty RefreshToken from secondary, got %q", got.RefreshToken)
+	}
+	if got.AccountID != "acct" {
+		t.Errorf("mergeCredentials should fill empty AccountID from secondary, got %q", got.AccountID)
+	}
+}
+
+func TestNormalizeStore_Nil(t *testing.T) {
+	normalizeStore(nil) // should not panic
+}
+
+func TestNormalizeStore_NilCredentials(t *testing.T) {
+	store := &AuthStore{Credentials: nil}
+	normalizeStore(store)
+	if store.Credentials == nil {
+		t.Error("normalizeStore should initialize nil Credentials to empty map")
+	}
+}
+
+func TestNormalizeStore_CanonicalizesKeys(t *testing.T) {
+	store := &AuthStore{
+		Credentials: map[string]*AuthCredential{
+			"OpenAI": {Provider: "OpenAI", AccessToken: "tok"},
+		},
+	}
+	normalizeStore(store)
+	// canonical should be lowercase
+	var found bool
+	for k := range store.Credentials {
+		if k == "openai" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("normalizeStore should canonicalize key to lowercase, got keys: %v", store.Credentials)
 	}
 }

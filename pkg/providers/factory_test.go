@@ -212,6 +212,242 @@ func TestResolveProviderSelection(t *testing.T) {
 			},
 			wantErrSubstr: "no API key configured for provider",
 		},
+		{
+			name: "explicit gemini provider uses gemini defaults",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "gemini"
+				cfg.Providers.Gemini.APIKey = "gemini-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://generativelanguage.googleapis.com/v1beta",
+		},
+		{
+			name: "explicit google alias routes to gemini defaults",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "google"
+				cfg.Providers.Gemini.APIKey = "google-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://generativelanguage.googleapis.com/v1beta",
+		},
+		{
+			name: "explicit vllm provider uses configured base",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "vllm"
+				cfg.Providers.VLLM.APIBase = "http://localhost:8000/v1"
+				cfg.Providers.VLLM.APIKey = "vllm-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "http://localhost:8000/v1",
+		},
+		{
+			name: "explicit llamacpp provider uses configured base",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "llamacpp"
+				cfg.Providers.LlamaCpp.APIBase = "http://localhost:8080/v1"
+				cfg.Providers.LlamaCpp.APIKey = "none"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "http://localhost:8080/v1",
+		},
+		{
+			name: "explicit mlx_lm provider uses configured base",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "mlx_lm"
+				cfg.Providers.MLXLM.APIBase = "http://localhost:8080/v1"
+				cfg.Providers.MLXLM.APIKey = "none"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "http://localhost:8080/v1",
+		},
+		{
+			name: "explicit avian provider uses avian defaults",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "avian"
+				cfg.Providers.Avian.APIKey = "avian-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.avian.io/v1",
+		},
+		{
+			name: "explicit mistral provider uses mistral defaults",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "mistral"
+				cfg.Providers.Mistral.APIKey = "mistral-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.mistral.ai/v1",
+		},
+		{
+			name: "explicit minimax provider uses minimax defaults",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "minimax"
+				cfg.Providers.Minimax.APIKey = "minimax-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.minimaxi.com/v1",
+		},
+		{
+			name: "glm alias routes to zhipu provider",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "glm"
+				cfg.Providers.Zhipu.APIKey = "zhipu-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://open.bigmodel.cn/api/paas/v4",
+		},
+		{
+			name: "claude-code alias routes to claude-cli provider type",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "claude-code"
+				cfg.Agents.Defaults.Workspace = "/tmp/ws"
+			},
+			wantType: providerTypeClaudeCLI,
+		},
+		{
+			name: "gemini model inferred from model prefix",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "gemini-1.5-pro"
+				cfg.Providers.Gemini.APIKey = "gemini-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://generativelanguage.googleapis.com/v1beta",
+		},
+		{
+			name: "mistral model inferred from model name",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "mistral-large"
+				cfg.Providers.Mistral.APIKey = "mistral-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.mistral.ai/v1",
+		},
+		{
+			name: "minimax model inferred from model name",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "minimax-text-01"
+				cfg.Providers.Minimax.APIKey = "minimax-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.minimaxi.com/v1",
+		},
+		{
+			name: "avian model prefix inferred",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "avian/gpt-4o"
+				cfg.Providers.Avian.APIKey = "avian-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.avian.io/v1",
+		},
+		{
+			name: "nvidia model inferred from model name",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "nvidia/llama-3.1-nemotron-70b"
+				cfg.Providers.Nvidia.APIKey = "nvapi-test"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://integrate.api.nvidia.com/v1",
+		},
+		{
+			name: "vivgrid model prefix inferred",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "vivgrid/claude-3.5-sonnet"
+				cfg.Providers.Vivgrid.APIKey = "vivgrid-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.vivgrid.com/v1",
+		},
+		{
+			name: "vllm fallback when no explicit provider but base configured",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "local-model"
+				cfg.Providers.VLLM.APIBase = "http://localhost:8000/v1"
+				cfg.Providers.VLLM.APIKey = "vllm-key"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "http://localhost:8000/v1",
+		},
+		{
+			name: "llamacpp fallback when no explicit provider but base configured",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "local-model"
+				cfg.Providers.LlamaCpp.APIBase = "http://localhost:8080/v1"
+				cfg.Providers.LlamaCpp.APIKey = "none"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "http://localhost:8080/v1",
+		},
+		{
+			name: "mlx_lm fallback when no explicit provider but base configured",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = "local-model"
+				cfg.Providers.MLXLM.APIBase = "http://localhost:8080/v1"
+				cfg.Providers.MLXLM.APIKey = "none"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "http://localhost:8080/v1",
+		},
+		{
+			name: "no model no provider returns error",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Model = ""
+				cfg.Agents.Defaults.Provider = ""
+			},
+			wantErrSubstr: "no model configured",
+		},
+		{
+			name: "openai explicit provider routes to openai defaults",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "openai"
+				cfg.Providers.OpenAI.APIKey = "sk-test"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.openai.com/v1",
+		},
+		{
+			name: "gpt alias routes to openai defaults",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "gpt"
+				cfg.Providers.OpenAI.APIKey = "sk-test"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.openai.com/v1",
+		},
+		{
+			name: "anthropic explicit provider with api key",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "anthropic"
+				cfg.Providers.Anthropic.APIKey = "sk-ant-test"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: defaultAnthropicAPIBase,
+		},
+		{
+			name: "claude alias with oauth routes to claude auth",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "claude"
+				cfg.Providers.Anthropic.AuthMethod = "oauth"
+			},
+			wantType: providerTypeClaudeAuth,
+		},
+		{
+			name: "groq explicit provider uses groq defaults",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "groq"
+				cfg.Providers.Groq.APIKey = "gsk-test"
+			},
+			wantType:    providerTypeHTTPCompat,
+			wantAPIBase: "https://api.groq.com/openai/v1",
+		},
+		{
+			name: "openai explicit codex-cli auth method returns codex cli token",
+			setup: func(cfg *config.Config) {
+				cfg.Agents.Defaults.Provider = "openai"
+				cfg.Providers.OpenAI.AuthMethod = "codex-cli"
+			},
+			wantType: providerTypeCodexCLIToken,
+		},
 	}
 
 	for _, tt := range tests {

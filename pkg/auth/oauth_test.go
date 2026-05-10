@@ -489,3 +489,410 @@ func newMockOAuthTokenServer() *httptest.Server {
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 }
+
+// TestDecodeBase64 tests the decodeBase64 function
+func TestDecodeBase64(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "valid base64",
+			input: base64.StdEncoding.EncodeToString([]byte("hello world")),
+			want:  "hello world",
+		},
+		{
+			name:  "invalid base64",
+			input: "not-valid-base64!!!",
+			want:  "not-valid-base64!!!",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "unicode",
+			input: base64.StdEncoding.EncodeToString([]byte("café")),
+			want:  "café",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decodeBase64(tt.input)
+			if got != tt.want {
+				t.Errorf("decodeBase64(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateState_Length(t *testing.T) {
+	state, err := GenerateState()
+	if err != nil {
+		t.Fatalf("GenerateState() error: %v", err)
+	}
+	// 32 bytes hex encoded = 64 chars
+	if len(state) != 64 {
+		t.Errorf("GenerateState() len = %d, want 64", len(state))
+	}
+}
+
+func TestGenerateState_Unique(t *testing.T) {
+	s1, _ := GenerateState()
+	s2, _ := GenerateState()
+	if s1 == s2 {
+		t.Error("GenerateState() should produce unique values")
+	}
+}
+
+func TestParseFlexibleInt_Null(t *testing.T) {
+	v, err := parseFlexibleInt(json.RawMessage("null"))
+	if err != nil || v != 0 {
+		t.Errorf("parseFlexibleInt null = %d, %v, want 0, nil", v, err)
+	}
+}
+
+func TestParseFlexibleInt_Empty(t *testing.T) {
+	v, err := parseFlexibleInt(json.RawMessage(""))
+	if err != nil || v != 0 {
+		t.Errorf("parseFlexibleInt empty = %d, %v, want 0, nil", v, err)
+	}
+}
+
+func TestParseFlexibleInt_Integer(t *testing.T) {
+	v, err := parseFlexibleInt(json.RawMessage("42"))
+	if err != nil || v != 42 {
+		t.Errorf("parseFlexibleInt int = %d, %v, want 42, nil", v, err)
+	}
+}
+
+func TestParseFlexibleInt_StringInteger(t *testing.T) {
+	v, err := parseFlexibleInt(json.RawMessage(`"30"`))
+	if err != nil || v != 30 {
+		t.Errorf("parseFlexibleInt string int = %d, %v, want 30, nil", v, err)
+	}
+}
+
+func TestParseFlexibleInt_EmptyString(t *testing.T) {
+	v, err := parseFlexibleInt(json.RawMessage(`""`))
+	if err != nil || v != 0 {
+		t.Errorf("parseFlexibleInt empty string = %d, %v, want 0, nil", v, err)
+	}
+}
+
+func TestParseFlexibleInt_Invalid(t *testing.T) {
+	_, err := parseFlexibleInt(json.RawMessage(`true`))
+	if err == nil {
+		t.Error("parseFlexibleInt invalid value should return error")
+	}
+}
+
+func TestGoogleAntigravityOAuthConfig_Fields(t *testing.T) {
+	cfg := GoogleAntigravityOAuthConfig()
+	if cfg.ClientID == "" {
+		t.Error("ClientID should be non-empty")
+	}
+	if cfg.ClientSecret == "" {
+		t.Error("ClientSecret should be non-empty")
+	}
+	if !strings.Contains(cfg.Issuer, "google.com") {
+		t.Errorf("Issuer should contain google.com, got %q", cfg.Issuer)
+	}
+	if cfg.Port == 0 {
+		t.Error("Port should be set")
+	}
+}
+
+func TestOAuthCallbackHandler_StateMismatch(t *testing.T) {
+	resultCh := make(chan callbackResult, 1)
+	handler := oauthCallbackHandler("expected-state", resultCh)
+
+	req, _ := http.NewRequest("GET", "/auth/callback?state=wrong-state&code=abc", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("state mismatch: status = %d, want 400", rr.Code)
+	}
+	result := <-resultCh
+	if result.err == nil || !strings.Contains(result.err.Error(), "state mismatch") {
+		t.Errorf("expected state mismatch error, got %v", result.err)
+	}
+}
+
+func TestOAuthCallbackHandler_MissingCode(t *testing.T) {
+	resultCh := make(chan callbackResult, 1)
+	handler := oauthCallbackHandler("my-state", resultCh)
+
+	req, _ := http.NewRequest("GET", "/auth/callback?state=my-state&error=access_denied", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("missing code: status = %d, want 400", rr.Code)
+	}
+	result := <-resultCh
+	if result.err == nil {
+		t.Error("expected error for missing code")
+	}
+	if result.code != "" {
+		t.Errorf("expected empty code, got %q", result.code)
+	}
+}
+
+func TestOAuthCallbackHandler_Success(t *testing.T) {
+	resultCh := make(chan callbackResult, 1)
+	handler := oauthCallbackHandler("good-state", resultCh)
+
+	req, _ := http.NewRequest("GET", "/auth/callback?state=good-state&code=auth-code-123", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("success: status = %d, want 200", rr.Code)
+	}
+	result := <-resultCh
+	if result.err != nil {
+		t.Errorf("unexpected error: %v", result.err)
+	}
+	if result.code != "auth-code-123" {
+		t.Errorf("code = %q, want auth-code-123", result.code)
+	}
+}
+
+func TestRequestDeviceCode_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/accounts/deviceauth/usercode" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"device_auth_id":"did-123","user_code":"ABCD-1234","interval":5}`))
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{Issuer: srv.URL, ClientID: "test-client"}
+	info, err := RequestDeviceCode(cfg)
+	if err != nil {
+		t.Fatalf("RequestDeviceCode unexpected error: %v", err)
+	}
+	if info.DeviceAuthID != "did-123" {
+		t.Errorf("DeviceAuthID = %q, want did-123", info.DeviceAuthID)
+	}
+	if info.UserCode != "ABCD-1234" {
+		t.Errorf("UserCode = %q, want ABCD-1234", info.UserCode)
+	}
+}
+
+func TestRequestDeviceCode_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{Issuer: srv.URL, ClientID: "test-client"}
+	_, err := RequestDeviceCode(cfg)
+	if err == nil {
+		t.Error("RequestDeviceCode with 500 should return error")
+	}
+}
+
+func TestRequestDeviceCode_InvalidBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`not-json`))
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{Issuer: srv.URL, ClientID: "test-client"}
+	_, err := RequestDeviceCode(cfg)
+	if err == nil {
+		t.Error("RequestDeviceCode with invalid JSON body should return error")
+	}
+}
+
+func TestRequestDeviceCode_ZeroInterval(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"device_auth_id":"did-zero","user_code":"ZERO","interval":0}`))
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{Issuer: srv.URL, ClientID: "test-client"}
+	info, err := RequestDeviceCode(cfg)
+	if err != nil {
+		t.Fatalf("RequestDeviceCode unexpected error: %v", err)
+	}
+	if info.Interval != 5 {
+		t.Errorf("zero interval should default to 5, got %d", info.Interval)
+	}
+}
+
+func TestExchangeCodeForTokens_WithGoogleTokenURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"google-token","expires_in":3600}`))
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{
+		Issuer:       "https://accounts.google.com",
+		ClientID:     "test-client",
+		ClientSecret: "test-secret",
+		TokenURL:     srv.URL + "?googleapis.com=1",
+	}
+	cred, err := ExchangeCodeForTokens(cfg, "code", "verifier", "http://localhost/callback")
+	if err != nil {
+		t.Fatalf("ExchangeCodeForTokens: %v", err)
+	}
+	if cred.Provider != "google-antigravity" {
+		t.Errorf("provider = %q, want google-antigravity", cred.Provider)
+	}
+}
+
+func TestExchangeCodeForTokens_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{Issuer: srv.URL, ClientID: "test-client"}
+	_, err := ExchangeCodeForTokens(cfg, "code", "verifier", "http://localhost/callback")
+	if err == nil {
+		t.Error("ExchangeCodeForTokens 403 should return error")
+	}
+}
+
+func TestExchangeCodeForTokens_NoAccessToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"refresh_token":"rtoken"}`))
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{Issuer: srv.URL, ClientID: "test-client"}
+	_, err := ExchangeCodeForTokens(cfg, "code", "verifier", "http://localhost/callback")
+	if err == nil {
+		t.Error("ExchangeCodeForTokens with no access_token should return error")
+	}
+}
+
+func TestPollDeviceCodeOnce_Pending(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "pending", http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{Issuer: srv.URL, ClientID: "test-client"}
+	cred, err := PollDeviceCodeOnce(cfg, "device-id", "USER-CODE")
+	if err == nil {
+		t.Error("pending response should return error")
+	}
+	if cred != nil {
+		t.Error("pending response should return nil credential")
+	}
+}
+
+func TestPollDeviceCodeOnce_NetworkError(t *testing.T) {
+	cfg := OAuthProviderConfig{Issuer: "http://localhost:19998", ClientID: "test-client"}
+	cred, err := PollDeviceCodeOnce(cfg, "device-id", "USER-CODE")
+	if err == nil {
+		t.Error("network error should return error")
+	}
+	if cred != nil {
+		t.Error("network error should return nil credential")
+	}
+}
+
+func TestPollDeviceCodeOnce_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/accounts/deviceauth/token":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"authorization_code":"auth-code","code_verifier":"verifier","code_challenge":"challenge"}`))
+		case "/oauth/token":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"poll-token","expires_in":3600}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{Issuer: srv.URL, ClientID: "test-client"}
+	cred, err := PollDeviceCodeOnce(cfg, "device-id", "USER-CODE")
+	if err != nil {
+		t.Fatalf("PollDeviceCodeOnce unexpected error: %v", err)
+	}
+	if cred == nil {
+		t.Fatal("PollDeviceCodeOnce should return credential on success")
+	}
+	if cred.AccessToken != "poll-token" {
+		t.Errorf("AccessToken = %q, want poll-token", cred.AccessToken)
+	}
+}
+
+func TestBuildAuthorizeURL_GoogleIssuer(t *testing.T) {
+	cfg := OAuthProviderConfig{
+		Issuer:   "https://accounts.google.com/o/oauth2/v2",
+		ClientID: "google-client-id",
+		Scopes:   "openid profile email",
+	}
+	pkce := PKCECodes{CodeVerifier: "verifier", CodeChallenge: "challenge"}
+	u := BuildAuthorizeURL(cfg, pkce, "state-val", "http://localhost:51121/auth/callback")
+
+	if !strings.Contains(u, "accounts.google.com") {
+		t.Errorf("Google URL should contain accounts.google.com, got: %s", u)
+	}
+	if !strings.Contains(u, "access_type=offline") {
+		t.Errorf("Google URL should have access_type=offline, got: %s", u)
+	}
+	if !strings.Contains(u, "prompt=consent") {
+		t.Errorf("Google URL should have prompt=consent, got: %s", u)
+	}
+	if !strings.Contains(u, "/auth?") {
+		t.Errorf("Google URL should use /auth path, got: %s", u)
+	}
+}
+
+func TestParseJWTClaims_NotJWT(t *testing.T) {
+	_, err := parseJWTClaims("notajwt")
+	if err == nil {
+		t.Error("parseJWTClaims with non-JWT should return error")
+	}
+}
+
+func TestRefreshAccessToken_WithCustomTokenURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"refreshed-token","expires_in":3600}`))
+	}))
+	defer srv.Close()
+
+	cfg := OAuthProviderConfig{
+		Issuer:       "https://auth.example.com",
+		ClientID:     "client",
+		ClientSecret: "secret",
+		TokenURL:     srv.URL,
+	}
+	cred := &AuthCredential{
+		AccessToken:  "old",
+		RefreshToken: "rtoken",
+		Provider:     "openai",
+	}
+	refreshed, err := RefreshAccessToken(cred, cfg)
+	if err != nil {
+		t.Fatalf("RefreshAccessToken with custom TokenURL: %v", err)
+	}
+	if refreshed.AccessToken != "refreshed-token" {
+		t.Errorf("AccessToken = %q, want refreshed-token", refreshed.AccessToken)
+	}
+	if refreshed.RefreshToken != "rtoken" {
+		t.Errorf("RefreshToken should carry over original, got %q", refreshed.RefreshToken)
+	}
+}

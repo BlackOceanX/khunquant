@@ -117,3 +117,53 @@ func TestGetDCAHistory_Pagination(t *testing.T) {
 		t.Errorf("expected no rows after offset=2, got: %s", result.ForUser)
 	}
 }
+
+func TestGetDCAHistoryTool_Name(t *testing.T) {
+	tool := NewGetDCAHistoryTool(newTestDCAStore(t))
+	if tool.Name() != NameGetDCAHistory {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameGetDCAHistory)
+	}
+}
+
+func TestGetDCAHistoryTool_Description(t *testing.T) {
+	tool := NewGetDCAHistoryTool(newTestDCAStore(t))
+	desc := tool.Description()
+	if desc == "" {
+		t.Fatal("Description() should not be empty")
+	}
+	if !strings.Contains(desc, "history") {
+		t.Errorf("Description should mention history, got: %s", desc)
+	}
+}
+
+func TestGetDCAHistoryTool_Parameters(t *testing.T) {
+	tool := NewGetDCAHistoryTool(newTestDCAStore(t))
+	params := tool.Parameters()
+
+	if params == nil {
+		t.Fatal("Parameters() should not return nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("type should be 'object', got %q", params["type"])
+	}
+
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties to be a map")
+	}
+
+	expectedProps := []string{"plan_id", "limit", "offset"}
+	for _, prop := range expectedProps {
+		if _, ok := props[prop]; !ok {
+			t.Errorf("expected property %q in Parameters", prop)
+		}
+	}
+
+	required, ok := params["required"].([]string)
+	if !ok {
+		t.Fatal("required should be a slice")
+	}
+	if len(required) == 0 || required[0] != "plan_id" {
+		t.Errorf("plan_id should be required, got %v", required)
+	}
+}

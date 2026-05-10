@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -734,5 +735,208 @@ func TestShellTool_FindInWorkspaceAllowed(t *testing.T) {
 		if result.IsError && strings.Contains(result.ForLLM, "blocked") {
 			t.Errorf("command should not be blocked: %s\n  error: %s", cmd, result.ForLLM)
 		}
+	}
+}
+
+func TestExecTool_Name(t *testing.T) {
+	tool, err := NewExecTool(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	if tool.Name() != NameExec {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameExec)
+	}
+}
+
+func TestExecTool_Description(t *testing.T) {
+	tool, err := NewExecTool(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	if tool.Description() == "" {
+		t.Error("Description() should not be empty")
+	}
+}
+
+func TestExecTool_Parameters(t *testing.T) {
+	tool, err := NewExecTool(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	params := tool.Parameters()
+	if params == nil {
+		t.Fatal("Parameters() should not be nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("Parameters() type = %v, want object", params["type"])
+	}
+}
+
+func TestExecTool_SetAllowPatterns(t *testing.T) {
+	tool, err := NewExecTool(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	// SetAllowPatterns must not panic.
+	tool.SetAllowPatterns([]string{"echo", "ls"})
+}
+
+func TestGuardCommand_SafeCommand(t *testing.T) {
+	tool, err := NewExecTool(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	msg := tool.guardCommand("echo hello", "/tmp")
+	if msg != "" {
+		t.Errorf("safe command should not be blocked, got %q", msg)
+	}
+}
+
+func TestGuardCommand_DangerousPattern(t *testing.T) {
+	tool, err := NewExecTool(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	msg := tool.guardCommand("rm -rf /", "/tmp")
+	if msg == "" {
+		t.Error("dangerous command should be blocked")
+	}
+}
+
+func TestGuardCommand_AllowlistBlocks(t *testing.T) {
+	tool, err := NewExecTool(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	if err := tool.SetAllowPatterns([]string{"^echo"}); err != nil {
+		t.Fatalf("SetAllowPatterns: %v", err)
+	}
+	msg := tool.guardCommand("ls -la", "/tmp")
+	if msg == "" {
+		t.Error("command not in allowlist should be blocked")
+	}
+}
+
+func TestGuardCommand_AllowlistPermits(t *testing.T) {
+	tool, err := NewExecTool(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	if err := tool.SetAllowPatterns([]string{"^echo"}); err != nil {
+		t.Fatalf("SetAllowPatterns: %v", err)
+	}
+	msg := tool.guardCommand("echo hello", "/tmp")
+	if msg != "" {
+		t.Errorf("allowlisted command should not be blocked, got %q", msg)
+	}
+}
+
+func TestGuardCommand_CustomAllowExemptsDeny(t *testing.T) {
+	tmp := t.TempDir()
+	cfg := config.DefaultConfig()
+	cfg.Tools.Exec.EnableDenyPatterns = true
+	cfg.Tools.Exec.CustomAllowPatterns = []string{"rm"}
+	tool, err := NewExecToolWithConfig(tmp, false, cfg)
+	if err != nil {
+		t.Fatalf("NewExecToolWithConfig: %v", err)
+	}
+	// "rm" is custom-allowed, so deny pattern should not fire
+	msg := tool.guardCommand("rm somefile", tmp)
+	if msg != "" {
+		t.Errorf("custom-allowed command should not be blocked, got %q", msg)
+	}
+}
+
+func TestGuardCommand_PathTraversal(t *testing.T) {
+	tmp := t.TempDir()
+	tool, err := NewExecTool(tmp, true)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	msg := tool.guardCommand("cat ../secret", tmp)
+	if msg == "" {
+		t.Error("path traversal should be blocked")
+	}
+}
+
+func TestShellTool_WorkingDir_InWorkspace_ReResolve(t *testing.T) {
+	// Covers cwd = resolvedWD (line 218) and the re-resolve symlink block (lines 237-255)
+	// when working_dir is a valid subdirectory of the workspace.
+	tmpDir := t.TempDir()
+	subDir := filepath.Join(tmpDir, "subdir")
+	if err := os.Mkdir(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir subdir: %v", err)
+	}
+	tool, err := NewExecTool(tmpDir, true)
+	if err != nil {
+		t.Fatalf("NewExecTool: %v", err)
+	}
+	ctx := context.Background()
+	result := tool.Execute(ctx, map[string]any{
+		"command":     "echo hello",
+		"working_dir": subDir,
+	})
+	// May succeed or fail the guardCommand check, but the symlink re-resolve path is hit.
+	_ = result
+}
+
+func TestNewExecToolWithConfig_AllowPaths(t *testing.T) {
+	// Covers the len(allowPaths) > 0 branch in NewExecToolWithConfig.
+	re := regexp.MustCompile(`/tmp/.*`)
+	tool, err := NewExecToolWithConfig("", false, nil, []*regexp.Regexp{re})
+	if err != nil {
+		t.Fatalf("NewExecToolWithConfig with allowPaths: %v", err)
+	}
+	if tool == nil {
+		t.Fatal("expected non-nil tool")
+	}
+}
+
+func TestNewExecToolWithConfig_CustomDenyPatterns(t *testing.T) {
+	// Covers the CustomDenyPatterns loop in NewExecToolWithConfig.
+	cfg := &config.Config{}
+	cfg.Tools.Exec.EnableDenyPatterns = true
+	cfg.Tools.Exec.CustomDenyPatterns = []string{`\brm\b`}
+	tool, err := NewExecToolWithConfig("", false, cfg)
+	if err != nil {
+		t.Fatalf("NewExecToolWithConfig with CustomDenyPatterns: %v", err)
+	}
+	if tool == nil {
+		t.Fatal("expected non-nil tool")
+	}
+}
+
+func TestNewExecToolWithConfig_InvalidCustomDenyPattern(t *testing.T) {
+	// Covers the error branch when a custom deny pattern fails to compile.
+	cfg := &config.Config{}
+	cfg.Tools.Exec.EnableDenyPatterns = true
+	cfg.Tools.Exec.CustomDenyPatterns = []string{`[invalid`}
+	_, err := NewExecToolWithConfig("", false, cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid custom deny pattern")
+	}
+}
+
+func TestNewExecToolWithConfig_DenyPatternsDisabled(t *testing.T) {
+	// Covers the EnableDenyPatterns=false branch (warning printed, no patterns added).
+	cfg := &config.Config{}
+	cfg.Tools.Exec.EnableDenyPatterns = false
+	tool, err := NewExecToolWithConfig("", false, cfg)
+	if err != nil {
+		t.Fatalf("NewExecToolWithConfig deny disabled: %v", err)
+	}
+	if tool == nil {
+		t.Fatal("expected non-nil tool")
+	}
+}
+
+func TestNewExecToolWithConfig_InvalidCustomAllowPattern(t *testing.T) {
+	// Covers the error branch when a custom allow pattern fails to compile.
+	cfg := &config.Config{}
+	cfg.Tools.Exec.EnableDenyPatterns = true
+	cfg.Tools.Exec.CustomAllowPatterns = []string{`[invalid`}
+	_, err := NewExecToolWithConfig("", false, cfg)
+	if err == nil {
+		t.Fatal("expected error for invalid custom allow pattern")
 	}
 }

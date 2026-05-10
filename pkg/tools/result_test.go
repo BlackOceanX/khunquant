@@ -266,3 +266,18 @@ func TestToolResultContentForLLM_AppendsArtifactPaths(t *testing.T) {
 		t.Fatalf("expected artifact guidance note in ContentForLLM, got %q", content)
 	}
 }
+
+func TestToolResultContentForLLM_NilReceiver(t *testing.T) {
+	var tr *ToolResult
+	if got := tr.ContentForLLM(); got != "" {
+		t.Errorf("nil ToolResult.ContentForLLM() = %q, want empty string", got)
+	}
+}
+
+func TestToolResultContentForLLM_ErrFallback(t *testing.T) {
+	tr := &ToolResult{Err: errors.New("something failed")}
+	got := tr.ContentForLLM()
+	if got != "something failed" {
+		t.Errorf("ContentForLLM with empty ForLLM and Err = %q, want error message", got)
+	}
+}

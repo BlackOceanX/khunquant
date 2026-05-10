@@ -447,3 +447,56 @@ func TestUpdateDCAPlan_Rename_SyncsCronJob(t *testing.T) {
 	}
 }
 
+func TestUpdateDCAPlanTool_Name(t *testing.T) {
+	store := newTestDCAStore(t)
+	cronSvc := newTestCronService(t)
+	tool := newTestUpdatePlanTool(t, store, cronSvc)
+	if tool.Name() != NameUpdateDCAPlan {
+		t.Errorf("Name() = %q, want %q", tool.Name(), NameUpdateDCAPlan)
+	}
+}
+
+func TestUpdateDCAPlanTool_Description(t *testing.T) {
+	store := newTestDCAStore(t)
+	cronSvc := newTestCronService(t)
+	tool := newTestUpdatePlanTool(t, store, cronSvc)
+	desc := tool.Description()
+	if desc == "" {
+		t.Fatal("Description() should not be empty")
+	}
+	if !strings.Contains(desc, "update") && !strings.Contains(desc, "Update") {
+		t.Errorf("Description should mention updating, got: %s", desc)
+	}
+}
+
+func TestUpdateDCAPlanTool_Parameters(t *testing.T) {
+	store := newTestDCAStore(t)
+	cronSvc := newTestCronService(t)
+	tool := newTestUpdatePlanTool(t, store, cronSvc)
+	params := tool.Parameters()
+
+	if params == nil {
+		t.Fatal("Parameters() should not return nil")
+	}
+	if params["type"] != "object" {
+		t.Errorf("type should be 'object', got %q", params["type"])
+	}
+
+	props, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties to be a map")
+	}
+
+	if _, ok := props["plan_id"]; !ok {
+		t.Error("expected property 'plan_id' in Parameters")
+	}
+
+	required, ok := params["required"].([]string)
+	if !ok {
+		t.Fatal("required should be a slice")
+	}
+	if len(required) == 0 || required[0] != "plan_id" {
+		t.Errorf("plan_id should be required, got %v", required)
+	}
+}
+

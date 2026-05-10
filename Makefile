@@ -299,6 +299,15 @@ vet: generate
 test: generate
 	@$(GO) test ./...
 
+## cover-core: Measure Tier 1 weighted coverage (target ≥80%)
+cover-core: deps
+	@bash scripts/cover-core.sh
+
+## cover-core-html: Open Tier 1 coverage as HTML report
+cover-core-html: cover-core
+	@$(GO) tool cover -html=coverage-core-filtered.out -o coverage-core.html
+	@echo "open coverage-core.html"
+
 ## fmt: Format Go code
 fmt:
 	@$(GOLANGCI_LINT) fmt

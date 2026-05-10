@@ -91,3 +91,21 @@ func TestResolveOrPassthrough_WithoutProviderID_Found(t *testing.T) {
 		t.Errorf("provider: want %q got %q", prov, pid)
 	}
 }
+
+func TestDefaultResolver_CatchAll_Register(t *testing.T) {
+	// Register with no symbols → catch-all entry.
+	const prov = "test_catchall_prov"
+	broker.DefaultResolver.Register(prov)
+
+	// An unregistered symbol falls through to the first catch-all.
+	gotProv, gotSym, err := broker.DefaultResolver.Resolve("SOMECOIN_UNIQUE_CATCHALL/USDT")
+	if err != nil {
+		t.Fatalf("expected catch-all fallback, got error: %v", err)
+	}
+	if gotProv != prov {
+		t.Errorf("catch-all provider: want %q got %q", prov, gotProv)
+	}
+	if gotSym != "SOMECOIN_UNIQUE_CATCHALL/USDT" {
+		t.Errorf("catch-all symbol: want passthrough, got %q", gotSym)
+	}
+}

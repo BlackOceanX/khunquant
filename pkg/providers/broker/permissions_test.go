@@ -142,3 +142,68 @@ func TestCheckPermission_AccountWithExplicitScope(t *testing.T) {
 		t.Errorf("expected nil for account with explicit trade permission: %v", err)
 	}
 }
+
+func TestCheckPermission_BinanceTH(t *testing.T) {
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			BinanceTH: config.BinanceTHExchangeConfig{
+				Enabled:  true,
+				Accounts: []config.ExchangeAccount{{Name: "main", APIKey: *config.NewSecureString("k")}},
+			},
+		},
+	}
+	if err := broker.CheckPermission(cfg, "binanceth", "main", config.ScopeTrade); err != nil {
+		t.Errorf("unexpected error for binanceth account: %v", err)
+	}
+}
+
+func TestCheckPermission_Bitkub(t *testing.T) {
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			Bitkub: config.BitkubExchangeConfig{
+				Enabled:  true,
+				Accounts: []config.ExchangeAccount{{Name: "main", APIKey: *config.NewSecureString("k")}},
+			},
+		},
+	}
+	if err := broker.CheckPermission(cfg, "bitkub", "main", config.ScopeTrade); err != nil {
+		t.Errorf("unexpected error for bitkub account: %v", err)
+	}
+}
+
+func TestCheckPermission_OKX_NoAccount(t *testing.T) {
+	// OKX with empty key → resolveExchangeAccount returns (acc, false) → CheckPermission nil
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			OKX: config.OKXExchangeConfig{
+				Enabled:  true,
+				Accounts: []config.OKXExchangeAccount{},
+			},
+		},
+	}
+	if err := broker.CheckPermission(cfg, "okx", "", config.ScopeTrade); err != nil {
+		t.Errorf("unexpected error for missing okx account: %v", err)
+	}
+}
+
+func TestCheckPermission_OKX_RestrictedScope(t *testing.T) {
+	// OKX account with restricted permissions
+	cfg := &config.Config{
+		Exchanges: config.ExchangesConfig{
+			OKX: config.OKXExchangeConfig{
+				Enabled: true,
+				Accounts: []config.OKXExchangeAccount{{
+					ExchangeAccount: config.ExchangeAccount{
+						Name:        "main",
+						APIKey:      *config.NewSecureString("key"),
+						Permissions: []config.PermissionScope{config.ScopeMarketData},
+					},
+				}},
+			},
+		},
+	}
+	err := broker.CheckPermission(cfg, "okx", "main", config.ScopeTrade)
+	if err == nil {
+		t.Error("expected error when OKX account lacks trade permission")
+	}
+}

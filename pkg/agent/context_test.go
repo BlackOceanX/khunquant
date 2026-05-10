@@ -347,3 +347,57 @@ func TestSanitizeHistoryForProvider_PartialToolResultsInMiddle(t *testing.T) {
 	}
 	assertRoles(t, result, "user", "assistant", "tool", "assistant", "user", "user", "assistant", "tool", "assistant")
 }
+
+func TestGetGlobalConfigDir_FromEnv(t *testing.T) {
+	t.Setenv("KHUNQUANT_HOME", "/tmp/test-khunquant")
+	got := getGlobalConfigDir()
+	if got != "/tmp/test-khunquant" {
+		t.Errorf("getGlobalConfigDir() = %q, want /tmp/test-khunquant", got)
+	}
+}
+
+func TestGetGlobalConfigDir_Default(t *testing.T) {
+	t.Setenv("KHUNQUANT_HOME", "")
+	got := getGlobalConfigDir()
+	if got == "" {
+		t.Error("getGlobalConfigDir() returned empty when KHUNQUANT_HOME unset")
+	}
+}
+
+func TestGetDiscoveryRule_NoneEnabled(t *testing.T) {
+	cb := &ContextBuilder{}
+	got := cb.getDiscoveryRule()
+	if got != "" {
+		t.Errorf("getDiscoveryRule() with no discovery enabled = %q, want empty", got)
+	}
+}
+
+func TestGetDiscoveryRule_BM25Only(t *testing.T) {
+	cb := &ContextBuilder{toolDiscoveryBM25: true}
+	got := cb.getDiscoveryRule()
+	if got == "" {
+		t.Error("getDiscoveryRule() with BM25 enabled should return non-empty")
+	}
+	if !containsStr(got, "tool_search_tool_bm25") {
+		t.Errorf("getDiscoveryRule() BM25 result missing expected tool name, got: %q", got)
+	}
+}
+
+func TestGetDiscoveryRule_RegexOnly(t *testing.T) {
+	cb := &ContextBuilder{toolDiscoveryRegex: true}
+	got := cb.getDiscoveryRule()
+	if got == "" {
+		t.Error("getDiscoveryRule() with regex enabled should return non-empty")
+	}
+	if !containsStr(got, "tool_search_tool_regex") {
+		t.Errorf("getDiscoveryRule() regex result missing expected tool name, got: %q", got)
+	}
+}
+
+func TestGetDiscoveryRule_BothEnabled(t *testing.T) {
+	cb := &ContextBuilder{toolDiscoveryBM25: true, toolDiscoveryRegex: true}
+	got := cb.getDiscoveryRule()
+	if !containsStr(got, "tool_search_tool_bm25") || !containsStr(got, "tool_search_tool_regex") {
+		t.Errorf("getDiscoveryRule() with both enabled missing tool names, got: %q", got)
+	}
+}

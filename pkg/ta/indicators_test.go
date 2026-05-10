@@ -161,3 +161,65 @@ func TestMACD_Basic(t *testing.T) {
 		t.Fatal("MACD line should not be empty")
 	}
 }
+
+func TestMACD_InvalidParams_FastGreaterThanSlow(t *testing.T) {
+	data := make([]float64, 60)
+	for i := range data {
+		data[i] = float64(i + 1)
+	}
+	if got := ta.MACD(data, 26, 12, 9); got != nil {
+		t.Error("MACD with fast >= slow should return nil")
+	}
+}
+
+func TestMACD_ZeroParam(t *testing.T) {
+	data := make([]float64, 60)
+	for i := range data {
+		data[i] = float64(i + 1)
+	}
+	if got := ta.MACD(data, 0, 26, 9); got != nil {
+		t.Error("MACD with zero fast should return nil")
+	}
+}
+
+func TestMACD_ShortData(t *testing.T) {
+	data := []float64{1.0, 2.0, 3.0}
+	if got := ta.MACD(data, 12, 26, 9); got != nil {
+		t.Error("MACD on too-short data should return nil")
+	}
+}
+
+func TestBollingerBands_ZeroPeriod(t *testing.T) {
+	data := make([]float64, 20)
+	for i := range data {
+		data[i] = float64(i + 1)
+	}
+	if got := ta.BollingerBands(data, 0, 2.0); got != nil {
+		t.Error("BollingerBands with period 0 should return nil")
+	}
+}
+
+func TestBollingerBands_TooShort(t *testing.T) {
+	data := []float64{1.0, 2.0}
+	if got := ta.BollingerBands(data, 20, 2.0); got != nil {
+		t.Error("BollingerBands on too-short data should return nil")
+	}
+}
+
+func TestStochastic_TooShort(t *testing.T) {
+	closes := []float64{1.0, 2.0}
+	highs := []float64{1.5, 2.5}
+	lows := []float64{0.5, 1.5}
+	if got := ta.Stochastic(closes, highs, lows, 14, 3); got != nil {
+		t.Error("Stochastic on too-short data should return nil")
+	}
+}
+
+func TestATR_TooShort(t *testing.T) {
+	closes := []float64{1.0}
+	highs := []float64{1.5}
+	lows := []float64{0.5}
+	if got := ta.ATR(closes, highs, lows, 14); got != nil {
+		t.Error("ATR on too-short data should return nil")
+	}
+}

@@ -102,3 +102,10 @@ func TestInstallSkillToolMissingRegistry(t *testing.T) {
 	assert.True(t, result.IsError)
 	assert.Contains(t, result.ForLLM, "invalid registry")
 }
+
+func TestInstallSkillTool_Description(t *testing.T) {
+	tool := NewInstallSkillTool(skills.NewRegistryManager(), t.TempDir())
+	if tool.Description() == "" {
+		t.Error("Description() should not be empty")
+	}
+}
