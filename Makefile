@@ -271,7 +271,7 @@ release-local:
 	@echo "Running GoReleaser (slim build, 2 parallel jobs)..."
 	GOVERSION=$$(go version | awk '{print $$3}') goreleaser release --config .goreleaser.local.yaml --clean --parallelism 2 --skip=sign,announce
 
-## release: Tag and publish a full release via GoReleaser (all platforms — needs a powerful CI machine).
+## release: Tag and publish a release via GoReleaser (5 platforms, 2 parallel jobs). Suitable for local dev machines.
 ## Usage: make release RELEASE_TAG=v0.2.0
 release:
 	@if [ -z "$(RELEASE_TAG)" ]; then echo "ERROR: set RELEASE_TAG, e.g. make release RELEASE_TAG=v0.2.0"; exit 1; fi
@@ -281,7 +281,7 @@ release:
 	git tag -a $(RELEASE_TAG) -m "Release $(RELEASE_TAG)"
 	git push origin $(RELEASE_TAG)
 	@echo "Running GoReleaser for $(RELEASE_TAG)..."
-	GOVERSION=$$(go version | awk '{print $$3}') goreleaser release --clean --parallelism 2 --skip=docker,sign,announce
+	GOVERSION=$$(go version | awk '{print $$3}') goreleaser release --config .goreleaser.local.yaml --clean --parallelism 2 --skip=docker,sign,announce
 
 ## clean: Remove build artifacts
 clean:
