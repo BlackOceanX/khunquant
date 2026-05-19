@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -207,6 +208,16 @@ func (h *Handler) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	info, err := updater.SelfUpdate(r.Context(), updater.DefaultOwner, updater.DefaultRepo, config.GetVersion(), "khunquant", binaryPath, nil, nil)
 	if err != nil {
 		log.Printf("self-update failed: %v", err)
+		if errors.Is(err, os.ErrPermission) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error":            err.Error(),
+				"permission_denied": true,
+				"binary_path":      binaryPath,
+			})
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

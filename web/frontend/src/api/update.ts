@@ -36,9 +36,26 @@ export interface ApplyUpdateResult {
   launcher_updated?: boolean
 }
 
+export class PermissionDeniedError extends Error {
+  permissionDenied = true as const
+  binaryPath: string
+  constructor(msg: string, binaryPath: string) {
+    super(msg)
+    this.name = "PermissionDeniedError"
+    this.binaryPath = binaryPath
+  }
+}
+
 export async function applyUpdate(): Promise<ApplyUpdateResult> {
   const res = await fetch("/api/update/apply", { method: "POST" })
   if (!res.ok) {
+    if (res.status === 403) {
+      let body: { error?: string; permission_denied?: boolean; binary_path?: string } | null = null
+      try { body = await res.json() } catch { /* ignore */ }
+      if (body?.permission_denied) {
+        throw new PermissionDeniedError(body.error ?? "Permission denied", body.binary_path ?? "")
+      }
+    }
     const text = await res.text()
     throw new Error(text || `HTTP ${res.status}`)
   }

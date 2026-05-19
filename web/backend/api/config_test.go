@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
@@ -314,6 +316,65 @@ func TestHandleTestCommandPatterns_InvalidJSON(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandlePatchConfig_UpdatesExchangeCredential(t *testing.T) {
+	configPath, cleanup := setupOAuthTestEnv(t)
+	defer cleanup()
+
+	// Setup: save initial config with a Bitkub account.
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	cfg.Exchanges.Bitkub.Enabled = true
+	cfg.Exchanges.Bitkub.Accounts = []config.ExchangeAccount{
+		{Name: "main", APIKey: *config.NewSecureString("old_api_key"), Secret: *config.NewSecureString("old_secret")},
+	}
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	secPath := filepath.Join(filepath.Dir(configPath), ".security.yml")
+	initial, err := os.ReadFile(secPath)
+	if err != nil {
+		t.Fatalf("ReadFile .security.yml (initial): %v", err)
+	}
+
+	h := NewHandler(configPath)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	// PATCH with new api_key; secret stays "[NOT_HERE]" (unchanged).
+	body := `{"exchanges":{"bitkub":{"enabled":true,"accounts":[{"name":"main","api_key":"new_api_key","secret":"[NOT_HERE]","proxy":""}]}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/config: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	updated, err := os.ReadFile(secPath)
+	if err != nil {
+		t.Fatalf("ReadFile .security.yml (updated): %v", err)
+	}
+
+	if bytes.Equal(initial, updated) {
+		t.Fatalf(".security.yml unchanged after credential update\ncontent: %s", updated)
+	}
+
+	newCfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig after PATCH: %v", err)
+	}
+	if got := newCfg.Exchanges.Bitkub.Accounts[0].APIKey.String(); got != "new_api_key" {
+		t.Errorf("APIKey = %q, want new_api_key", got)
+	}
+	if got := newCfg.Exchanges.Bitkub.Accounts[0].Secret.String(); got != "old_secret" {
+		t.Errorf("Secret = %q, want old_secret (should be preserved)", got)
 	}
 }
 

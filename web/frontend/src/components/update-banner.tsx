@@ -1,13 +1,13 @@
-import { IconDownload, IconLoader2, IconX } from "@tabler/icons-react"
+import { IconCopy, IconDownload, IconLoader2, IconX } from "@tabler/icons-react"
 import * as React from "react"
 import { toast } from "sonner"
 
-import { applyUpdate } from "@/api/update"
+import { PermissionDeniedError, applyUpdate } from "@/api/update"
 import { useUpdateCheck } from "@/hooks/use-update-check"
 
 const DISMISS_KEY = "update-banner-dismissed"
 
-type UpdateState = "idle" | "updating" | "launcher-restarting" | "error"
+type UpdateState = "idle" | "updating" | "launcher-restarting" | "error" | "permission-denied"
 
 async function pollUntilReachable(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -37,6 +37,7 @@ export function UpdateBanner() {
   })
   const [state, setState] = React.useState<UpdateState>("idle")
   const [errorMsg, setErrorMsg] = React.useState<string>("")
+  const [permBinaryPath, setPermBinaryPath] = React.useState<string>("")
 
   // Reset dismiss when a newer version supersedes the previously dismissed one.
   React.useEffect(() => {
@@ -75,8 +76,13 @@ export function UpdateBanner() {
       refetch()
       setState("idle")
     } catch (err) {
-      setState("error")
-      setErrorMsg(err instanceof Error ? err.message : String(err))
+      if (err instanceof PermissionDeniedError) {
+        setState("permission-denied")
+        setPermBinaryPath(err.binaryPath)
+      } else {
+        setState("error")
+        setErrorMsg(err instanceof Error ? err.message : String(err))
+      }
     }
   }
 
@@ -92,7 +98,38 @@ export function UpdateBanner() {
           )}
         </span>
 
-        {state === "error" ? (
+        {state === "permission-denied" ? (
+          <>
+            <span className="opacity-90 text-yellow-200">
+              No write permission to{" "}
+              <code className="font-mono text-xs bg-white/10 px-1 py-0.5 rounded">
+                {permBinaryPath || "binary"}
+              </code>
+              {" — run in terminal:"}
+            </span>
+            <code className="font-mono text-xs bg-white/10 px-1.5 py-0.5 rounded select-all">
+              sudo khunquant update
+            </code>
+            <button
+              onClick={() => {
+                void navigator.clipboard.writeText("sudo khunquant update")
+                toast.success("Copied!")
+              }}
+              className="flex items-center gap-1 rounded bg-white/20 px-2 py-0.5 font-medium hover:bg-white/30"
+            >
+              <IconCopy className="size-3" />
+              Copy
+            </button>
+            <a
+              href={update.release_url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded bg-white/20 px-2 py-0.5 font-medium hover:bg-white/30"
+            >
+              Download manually
+            </a>
+          </>
+        ) : state === "error" ? (
           <>
             <span className="opacity-90 text-red-200">{errorMsg}</span>
             <a

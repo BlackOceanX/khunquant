@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -389,5 +392,61 @@ func TestMaskAPIKey(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestHandleUpdateModel_UpdatesAPIKey(t *testing.T) {
+	configPath, cleanup := setupOAuthTestEnv(t)
+	defer cleanup()
+
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	cfg.ModelList = []config.ModelConfig{{
+		ModelName: "gpt-4",
+		Model:     "openai/gpt-4o",
+		APIKey:    *config.NewSecureString("old_api_key"),
+	}}
+	cfg.Agents.Defaults.ModelName = "gpt-4"
+	if err := config.SaveConfig(configPath, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	secPath := filepath.Join(filepath.Dir(configPath), ".security.yml")
+	initial, err := os.ReadFile(secPath)
+	if err != nil {
+		t.Fatalf("ReadFile .security.yml (initial): %v", err)
+	}
+
+	h := NewHandler(configPath)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	body := `{"model_name":"gpt-4","model":"openai/gpt-4o","api_key":"new_api_key"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/models/0", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT /api/models/0: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	updated, err := os.ReadFile(secPath)
+	if err != nil {
+		t.Fatalf("ReadFile .security.yml (updated): %v", err)
+	}
+
+	if bytes.Equal(initial, updated) {
+		t.Fatalf(".security.yml unchanged after model API key update\ncontent: %s", updated)
+	}
+
+	newCfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig after PUT: %v", err)
+	}
+	if got := newCfg.ModelList[0].APIKey.String(); got != "new_api_key" {
+		t.Errorf("APIKey = %q, want new_api_key", got)
 	}
 }
