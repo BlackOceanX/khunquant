@@ -41,7 +41,8 @@ Create, list, or cancel indicator-based alerts. Same action pattern as `set_pric
 
 **Create** (`action=create`):
 - `provider`, `account`, `symbol`, `timeframe`: as above
-- `indicator`: RSI, MACD, SMA20, or EMA9
+- `indicator`: RSI, MACD, SMA, or EMA
+- `period`: lookback period (integer, e.g. 9, 20, 50, 200, 350). Defaults: SMA=20, EMA=20, RSI=14. Ignored for MACD (uses 12/26/9).
 - `condition`: "above" or "below"
 - `threshold`: indicator value threshold
 - `message`, `recurring`: as above
@@ -52,7 +53,9 @@ Create, list, or cancel indicator-based alerts. Same action pattern as `set_pric
 set_price_alert: BTC/USDT below 60000 → notify me
 set_price_alert: ETH/USDT above 4000 → sell signal
 set_indicator_alert: BTC/USDT RSI(1h) below 30 → potential oversold entry
-set_indicator_alert: BTC/USDT EMA9(4h) above threshold=MACD → bullish cross
+set_indicator_alert: BTC/USDT EMA period=9 (4h) above 90000 → bullish cross
+set_indicator_alert: ZEC/USDT EMA period=350 (1d) above 587.84 → long entry
+set_indicator_alert: BTC/USDT SMA period=200 (1d) below 60000 → trend break
 ```
 
 ## Notes
@@ -60,3 +63,4 @@ set_indicator_alert: BTC/USDT EMA9(4h) above threshold=MACD → bullish cross
 - One-shot alerts (recurring=false) auto-cancel after firing.
 - Alerts poll every minute — they may fire up to 1 minute after the condition is met.
 - The cron tool must be enabled for alerts to function.
+- Alerts request `period * 3` candles (min 100, max 500). Exchanges with shallow history (e.g. Bitkub TradingView feed ~180 daily bars) will return a `not enough data: have X bars, need >= Y` error for very long periods on long timeframes.

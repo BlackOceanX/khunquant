@@ -369,6 +369,8 @@ func TestStore_CountExecutionsInPeriod(t *testing.T) {
 	planID, _ := s.SavePlan(ctx, plan)
 
 	now := time.Now()
+	y, mo, d := now.Date()
+	startOfToday := time.Date(y, mo, d, 0, 0, 0, 0, now.Location())
 
 	// Execution 1: now (in current hour, day, week)
 	exec1 := minimalExecution(planID)
@@ -377,9 +379,11 @@ func TestStore_CountExecutionsInPeriod(t *testing.T) {
 		t.Fatalf("SaveExecution 1: %v", err)
 	}
 
-	// Execution 2: now - 90 minutes (in current day and week, but NOT current hour)
+	// Execution 2: 30 minutes into today — always within the current calendar day
+	// and week, avoiding the midnight-crossing flake of a fixed relative offset.
+	// It falls in the current hour only when running in the 00:xx hour.
 	exec2 := minimalExecution(planID)
-	exec2.ExecutedAt = now.Add(-90 * time.Minute)
+	exec2.ExecutedAt = startOfToday.Add(30 * time.Minute)
 	if _, err := s.SaveExecution(ctx, exec2); err != nil {
 		t.Fatalf("SaveExecution 2: %v", err)
 	}
@@ -391,12 +395,17 @@ func TestStore_CountExecutionsInPeriod(t *testing.T) {
 		t.Fatalf("SaveExecution 3: %v", err)
 	}
 
+	// exec2 is in the current hour only when running in the 00:xx hour (startOfToday+30min < 01:00).
+	wantHour := 1
+	if now.Hour() == 0 {
+		wantHour = 2
+	}
 	hourCount, err := s.CountExecutionsInPeriod(ctx, planID, "hour")
 	if err != nil {
 		t.Fatalf("CountExecutionsInPeriod(hour): %v", err)
 	}
-	if hourCount != 1 {
-		t.Errorf("hour count = %d, want 1", hourCount)
+	if hourCount != wantHour {
+		t.Errorf("hour count = %d, want %d", hourCount, wantHour)
 	}
 
 	dayCount, err := s.CountExecutionsInPeriod(ctx, planID, "day")

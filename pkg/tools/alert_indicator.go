@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
 	"github.com/cryptoquantumwave/khunquant/pkg/cron"
@@ -15,7 +17,8 @@ type indicatorAlertPayload struct {
 	Account    string  `json:"account"`
 	Symbol     string  `json:"symbol"`
 	Timeframe  string  `json:"timeframe"`
-	Indicator  string  `json:"indicator"` // RSI | MACD | SMA | EMA
+	Indicator  string  `json:"indicator"` // RSI | MACD | SMA | EMA (legacy SMA20/EMA9 accepted)
+	Period     int     `json:"period"`    // lookback period; 0 = use default
 	Condition  string  `json:"condition"` // "above" | "below"
 	Threshold  float64 `json:"threshold"`
 	AlertMsg   string  `json:"alert_msg"`
@@ -35,7 +38,7 @@ func NewSetIndicatorAlertTool(cfg *config.Config, cronService *cron.CronService)
 func (t *SetIndicatorAlertTool) Name() string { return NameSetIndicatorAlert }
 
 func (t *SetIndicatorAlertTool) Description() string {
-	return "Create, list, or cancel indicator-based alerts. An alert fires when a computed indicator value (RSI, MACD, SMA, EMA) crosses a threshold. Use action='create', 'list', or 'cancel'."
+	return "Create, list, or cancel indicator-based alerts. An alert fires when a computed indicator value (RSI, MACD, SMA, EMA) crosses a threshold. SMA and EMA support any period (e.g. SMA50, EMA200, EMA350). Use action='create', 'list', or 'cancel'."
 }
 
 func (t *SetIndicatorAlertTool) Parameters() map[string]any {
@@ -47,7 +50,8 @@ func (t *SetIndicatorAlertTool) Parameters() map[string]any {
 			"account":   map[string]any{"type": "string", "description": "Account name (empty = default)."},
 			"symbol":    map[string]any{"type": "string", "description": "Trading pair (required for create)."},
 			"timeframe": map[string]any{"type": "string", "enum": []string{"1m", "5m", "15m", "1h", "4h", "1d", "1w"}, "description": "Candle interval for indicator computation."},
-			"indicator": map[string]any{"type": "string", "enum": []string{"RSI", "MACD", "SMA20", "EMA9"}, "description": "Indicator to monitor."},
+			"indicator": map[string]any{"type": "string", "enum": []string{"RSI", "MACD", "SMA", "EMA"}, "description": "Indicator family to monitor."},
+			"period":    map[string]any{"type": "integer", "description": "Lookback period for SMA/EMA/RSI (e.g. 9, 20, 50, 200, 350). Ignored for MACD (uses 12/26/9). Defaults: SMA=20, EMA=20, RSI=14."},
 			"condition": map[string]any{"type": "string", "enum": []string{"above", "below"}, "description": "Fire when indicator is above or below threshold."},
 			"threshold": map[string]any{"type": "number", "description": "Indicator value threshold."},
 			"message":   map[string]any{"type": "string", "description": "Custom alert message."},
@@ -102,12 +106,52 @@ func (t *SetIndicatorAlertTool) createAlert(ctx context.Context, args map[string
 		timeframe = "1h"
 	}
 
+	// Normalize indicator: uppercase and strip any trailing digits
+	// so the LLM can pass "SMA20", "EMA9", "SMA200", etc. and they map correctly.
+	ind := strings.ToUpper(strings.TrimRightFunc(indicator, unicode.IsDigit))
+
+	// Extract period from arg first; fall back to the digits stripped from indicator string.
+	period := 0
+	if v, ok := args["period"]; ok {
+		switch n := v.(type) {
+		case float64:
+			period = int(n)
+		case int:
+			period = n
+		}
+	}
+	if period <= 0 {
+		// Try to read digits from the raw indicator string (e.g. "SMA200" → 200).
+		digits := strings.TrimLeftFunc(strings.ToUpper(indicator), func(r rune) bool { return !unicode.IsDigit(r) })
+		if digits != "" {
+			fmt.Sscanf(digits, "%d", &period)
+		}
+	}
+	// Apply defaults by family.
+	if period <= 0 {
+		switch ind {
+		case "RSI":
+			period = 14
+		case "SMA", "EMA":
+			period = 20
+		}
+	}
+
+	// Validate period for indicators that require it.
+	switch ind {
+	case "SMA", "EMA", "RSI":
+		if period < 2 {
+			return ErrorResult(fmt.Sprintf("period must be >= 2 for %s (got %d)", ind, period))
+		}
+	}
+
 	payload := indicatorAlertPayload{
 		ProviderID: providerID,
 		Account:    account,
 		Symbol:     symbol,
 		Timeframe:  timeframe,
-		Indicator:  indicator,
+		Indicator:  ind,
+		Period:     period,
 		Condition:  condition,
 		Threshold:  threshold,
 		AlertMsg:   message,
@@ -123,7 +167,11 @@ func (t *SetIndicatorAlertTool) createAlert(ctx context.Context, args map[string
 		Expr: "* * * * *",
 	}
 
-	name := fmt.Sprintf("indicator_alert:%s:%s:%s:%s:%.4g", providerID, symbol, indicator, condition, threshold)
+	periodTag := ""
+	if period > 0 {
+		periodTag = fmt.Sprintf("%d", period)
+	}
+	name := fmt.Sprintf("indicator_alert:%s:%s:%s%s:%s:%.4g", providerID, symbol, ind, periodTag, condition, threshold)
 
 	// Capture the originating channel/chatID so the handler can notify the right user.
 	// Allow args to override the context channel/chatID for cross-channel alert delivery.
@@ -149,6 +197,10 @@ func (t *SetIndicatorAlertTool) createAlert(ctx context.Context, args map[string
 	job.Payload.NoHistory = true
 	t.cronService.UpdateJob(job)
 
+	label := ind
+	if period > 0 && ind != "MACD" {
+		label = fmt.Sprintf("%s(%d)", ind, period)
+	}
 	return UserResult(fmt.Sprintf("Indicator alert created (ID: %s)\n  %s %s(%s) %s %.4g\n  Timeframe: %s  Recurring: %v",
-		job.ID, symbol, indicator, timeframe, condition, threshold, timeframe, recurring))
+		job.ID, symbol, label, timeframe, condition, threshold, timeframe, recurring))
 }

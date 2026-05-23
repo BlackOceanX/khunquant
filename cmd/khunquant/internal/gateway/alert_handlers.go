@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/cryptoquantumwave/khunquant/pkg/bus"
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
@@ -30,7 +31,8 @@ type alertIndicatorPayload struct {
 	Account    string  `json:"account"`
 	Symbol     string  `json:"symbol"`
 	Timeframe  string  `json:"timeframe"`
-	Indicator  string  `json:"indicator"` // RSI | MACD | SMA20 | EMA9
+	Indicator  string  `json:"indicator"` // RSI | MACD | SMA | EMA (legacy SMA20/EMA9 accepted)
+	Period     int     `json:"period"`    // lookback period; 0 = use default
 	Condition  string  `json:"condition"` // "above" | "below"
 	Threshold  float64 `json:"threshold"`
 	AlertMsg   string  `json:"alert_msg"`
@@ -155,12 +157,41 @@ func handleIndicatorAlertJob(
 		timeframe = "1h"
 	}
 
-	candles, err := md.FetchOHLCV(ctx, payload.Symbol, timeframe, nil, 100)
+	// Normalize indicator family and period, including legacy "SMA20"/"EMA9" strings.
+	ind := strings.ToUpper(payload.Indicator)
+	period := payload.Period
+	switch ind {
+	case "SMA20":
+		ind, period = "SMA", 20
+	case "EMA9":
+		ind, period = "EMA", 9
+	}
+	if period <= 0 {
+		switch ind {
+		case "RSI":
+			period = 14
+		case "SMA", "EMA":
+			period = 20
+		}
+	}
+
+	// Request enough bars for a reliable computation: period*3, at least 100, at most 500.
+	limit := period * 3
+	if limit < 100 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	candles, err := md.FetchOHLCV(ctx, payload.Symbol, timeframe, nil, limit)
 	if err != nil {
 		return "", fmt.Errorf("indicator alert: FetchOHLCV: %w", err)
 	}
-	if len(candles) < 20 {
-		return "not enough data", nil
+	required := period + 1
+	if len(candles) < required {
+		return fmt.Sprintf("not enough data: have %d bars, need >= %d for %s(%d) — exchange history may be too shallow for this period/timeframe",
+			len(candles), required, ind, period), nil
 	}
 
 	closes := make([]float64, len(candles))
@@ -170,9 +201,9 @@ func handleIndicatorAlertJob(
 
 	var value float64
 	var hasValue bool
-	switch payload.Indicator {
+	switch ind {
 	case "RSI":
-		vals := ta.RSI(closes, 14)
+		vals := ta.RSI(closes, period)
 		if len(vals) > 0 {
 			value = vals[len(vals)-1]
 			hasValue = true
@@ -183,14 +214,14 @@ func handleIndicatorAlertJob(
 			value = result.MACD[len(result.MACD)-1]
 			hasValue = true
 		}
-	case "SMA20":
-		vals := ta.SMA(closes, 20)
+	case "SMA":
+		vals := ta.SMA(closes, period)
 		if len(vals) > 0 {
 			value = vals[len(vals)-1]
 			hasValue = true
 		}
-	case "EMA9":
-		vals := ta.EMA(closes, 9)
+	case "EMA":
+		vals := ta.EMA(closes, period)
 		if len(vals) > 0 {
 			value = vals[len(vals)-1]
 			hasValue = true
@@ -213,18 +244,22 @@ func handleIndicatorAlertJob(
 		return "condition not met", nil
 	}
 
+	indLabel := ind
+	if ind != "MACD" {
+		indLabel = fmt.Sprintf("%s(%d)", ind, period)
+	}
 	notification := payload.AlertMsg
 	if notification == "" {
 		notification = fmt.Sprintf(
 			"🔔 Indicator Alert: %s %s(%s) is %s %.4g (current: %.4g) on %s",
-			payload.Symbol, payload.Indicator, timeframe,
+			payload.Symbol, indLabel, timeframe,
 			payload.Condition, payload.Threshold, value,
 			payload.ProviderID,
 		)
 	} else {
 		notification = fmt.Sprintf(
 			"%s\n%s %s(%s): %.4g",
-			notification, payload.Symbol, payload.Indicator, timeframe, value,
+			notification, payload.Symbol, indLabel, timeframe, value,
 		)
 	}
 
