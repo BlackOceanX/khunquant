@@ -45,8 +45,12 @@ func CreateProvider(name string, cfg *config.Config) (Provider, error) {
 }
 
 // CreateProviderForAccount creates a provider for a specific named sub-account.
-// Falls back to CreateProvider (default account) if no account factory is registered.
+// Falls back to CreateProvider (default account) when accountName is empty or
+// no account factory is registered.
 func CreateProviderForAccount(name, accountName string, cfg *config.Config) (Provider, error) {
+	if accountName == "" {
+		return CreateProvider(name, cfg)
+	}
 	mu.RLock()
 	af, ok := accountFactories[name]
 	mu.RUnlock()
