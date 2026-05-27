@@ -656,14 +656,8 @@ func applyToolState(cfg *config.Config, toolName string, enabled bool) error {
 	case tools.NameEmergencyStop:
 		cfg.Tools.EmergencyStop.Enabled = enabled
 	case tools.NameFuturesSetLeverage:
-		if enabled && !cfg.TradingRisk.AllowLeverage {
-			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
-		}
 		cfg.Tools.FuturesSetLeverage.Enabled = enabled
 	case tools.NameFuturesOpenPosition:
-		if enabled && !cfg.TradingRisk.AllowLeverage {
-			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
-		}
 		cfg.Tools.FuturesOpenPosition.Enabled = enabled
 	case tools.NameFuturesGetOrder:
 		cfg.Tools.FuturesGetOrder.Enabled = enabled
@@ -678,26 +672,14 @@ func applyToolState(cfg *config.Config, toolName string, enabled bool) error {
 	case tools.NameFuturesEstimateFundingFee:
 		cfg.Tools.FuturesEstimateFundingFee.Enabled = enabled
 	case tools.NameFuturesClosePosition:
-		if enabled && !cfg.TradingRisk.AllowLeverage {
-			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
-		}
 		cfg.Tools.FuturesClosePosition.Enabled = enabled
 	case tools.NameFuturesReducePosition:
-		if enabled && !cfg.TradingRisk.AllowLeverage {
-			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
-		}
 		cfg.Tools.FuturesReducePosition.Enabled = enabled
 	case tools.NameFuturesModifyProtection:
-		if enabled && !cfg.TradingRisk.AllowLeverage {
-			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
-		}
 		cfg.Tools.FuturesModifyProtection.Enabled = enabled
 	case tools.NameFuturesCancelOrders:
 		cfg.Tools.FuturesCancelOrders.Enabled = enabled
 	case tools.NameFuturesEmergencyFlatten:
-		if enabled && !cfg.TradingRisk.AllowLeverage {
-			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
-		}
 		cfg.Tools.FuturesEmergencyFlatten.Enabled = enabled
 	case tools.NameCreateDCAPlan:
 		cfg.Tools.CreateDCAPlan.Enabled = enabled
