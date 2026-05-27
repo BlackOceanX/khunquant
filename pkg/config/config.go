@@ -1038,11 +1038,19 @@ type ToolsConfig struct {
 	GetOrderRateStatus ToolConfig `json:"get_order_rate_status" envPrefix:"KHUNQUANT_TOOLS_GET_ORDER_RATE_STATUS_"`
 
 	// Futures / perpetual swaps (Track B2)
-	FuturesSetLeverage  ToolConfig `json:"futures_set_leverage"  envPrefix:"KHUNQUANT_TOOLS_FUTURES_SET_LEVERAGE_"`
-	FuturesOpenPosition ToolConfig `json:"futures_open_position" envPrefix:"KHUNQUANT_TOOLS_FUTURES_OPEN_POSITION_"`
-	FuturesGetOrder     ToolConfig `json:"futures_get_order"     envPrefix:"KHUNQUANT_TOOLS_FUTURES_GET_ORDER_"`
-	FuturesGetPositions ToolConfig `json:"futures_get_positions" envPrefix:"KHUNQUANT_TOOLS_FUTURES_GET_POSITIONS_"`
-	FuturesGetFunding   ToolConfig `json:"futures_get_funding"   envPrefix:"KHUNQUANT_TOOLS_FUTURES_GET_FUNDING_"`
+	FuturesSetLeverage       ToolConfig `json:"futures_set_leverage"       envPrefix:"KHUNQUANT_TOOLS_FUTURES_SET_LEVERAGE_"`
+	FuturesOpenPosition      ToolConfig `json:"futures_open_position"      envPrefix:"KHUNQUANT_TOOLS_FUTURES_OPEN_POSITION_"`
+	FuturesGetOrder          ToolConfig `json:"futures_get_order"          envPrefix:"KHUNQUANT_TOOLS_FUTURES_GET_ORDER_"`
+	FuturesGetPositions      ToolConfig `json:"futures_get_positions"      envPrefix:"KHUNQUANT_TOOLS_FUTURES_GET_POSITIONS_"`
+	FuturesGetFunding        ToolConfig `json:"futures_get_funding"        envPrefix:"KHUNQUANT_TOOLS_FUTURES_GET_FUNDING_"`
+	FuturesValidateMarket    ToolConfig `json:"futures_validate_market"    envPrefix:"KHUNQUANT_TOOLS_FUTURES_VALIDATE_MARKET_"`
+	FuturesRiskSummary       ToolConfig `json:"futures_risk_summary"       envPrefix:"KHUNQUANT_TOOLS_FUTURES_RISK_SUMMARY_"`
+	FuturesEstimateFundingFee ToolConfig `json:"futures_estimate_funding_fee" envPrefix:"KHUNQUANT_TOOLS_FUTURES_ESTIMATE_FUNDING_FEE_"`
+	FuturesClosePosition     ToolConfig `json:"futures_close_position"     envPrefix:"KHUNQUANT_TOOLS_FUTURES_CLOSE_POSITION_"`
+	FuturesReducePosition    ToolConfig `json:"futures_reduce_position"    envPrefix:"KHUNQUANT_TOOLS_FUTURES_REDUCE_POSITION_"`
+	FuturesModifyProtection  ToolConfig `json:"futures_modify_protection"  envPrefix:"KHUNQUANT_TOOLS_FUTURES_MODIFY_PROTECTION_"`
+	FuturesCancelOrders      ToolConfig `json:"futures_cancel_orders"      envPrefix:"KHUNQUANT_TOOLS_FUTURES_CANCEL_ORDERS_"`
+	FuturesEmergencyFlatten  ToolConfig `json:"futures_emergency_flatten"  envPrefix:"KHUNQUANT_TOOLS_FUTURES_EMERGENCY_FLATTEN_"`
 
 	// Technical analysis tools (Track C)
 	CalculateIndicators ToolConfig `json:"calculate_indicators" envPrefix:"KHUNQUANT_TOOLS_CALCULATE_INDICATORS_"`
@@ -1469,6 +1477,22 @@ func (t *ToolsConfig) IsToolEnabled(name string) bool {
 		return t.FuturesGetPositions.Enabled
 	case "futures_get_funding":
 		return t.FuturesGetFunding.Enabled
+	case "futures_validate_market":
+		return t.FuturesValidateMarket.Enabled
+	case "futures_risk_summary":
+		return t.FuturesRiskSummary.Enabled
+	case "futures_estimate_funding_fee":
+		return t.FuturesEstimateFundingFee.Enabled
+	case "futures_close_position":
+		return t.FuturesClosePosition.Enabled
+	case "futures_reduce_position":
+		return t.FuturesReducePosition.Enabled
+	case "futures_modify_protection":
+		return t.FuturesModifyProtection.Enabled
+	case "futures_cancel_orders":
+		return t.FuturesCancelOrders.Enabled
+	case "futures_emergency_flatten":
+		return t.FuturesEmergencyFlatten.Enabled
 	case "calculate_indicators":
 		return t.CalculateIndicators.Enabled
 	case "market_analysis":

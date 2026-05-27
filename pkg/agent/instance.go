@@ -225,6 +225,30 @@ func NewAgentInstance(
 	if cfg.Tools.IsToolEnabled("futures_get_funding") {
 		toolsRegistry.Register(tools.NewFuturesGetFundingTool(cfg))
 	}
+	if cfg.Tools.IsToolEnabled("futures_validate_market") {
+		toolsRegistry.Register(tools.NewFuturesValidateMarketTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("futures_risk_summary") {
+		toolsRegistry.Register(tools.NewFuturesRiskSummaryTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("futures_estimate_funding_fee") {
+		toolsRegistry.Register(tools.NewFuturesEstimateFundingFeeTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("futures_close_position") {
+		toolsRegistry.Register(tools.NewFuturesClosePositionTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("futures_reduce_position") {
+		toolsRegistry.Register(tools.NewFuturesReducePositionTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("futures_modify_protection") {
+		toolsRegistry.Register(tools.NewFuturesModifyProtectionTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("futures_cancel_orders") {
+		toolsRegistry.Register(tools.NewFuturesCancelOrdersTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("futures_emergency_flatten") {
+		toolsRegistry.Register(tools.NewFuturesEmergencyFlattenTool(cfg))
+	}
 
 	// Technical analysis tools (Track C).
 	if cfg.Tools.IsToolEnabled("calculate_indicators") {

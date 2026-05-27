@@ -326,6 +326,51 @@ func (a *OKXBrokerAdapter) FetchFuturesFundingHistory(_ context.Context, symbol 
 	return
 }
 
+func (a *OKXBrokerAdapter) LoadFuturesMarkets(_ context.Context) (markets map[string]ccxt.MarketInterface, err error) {
+	err = catchPanic(func() error { markets, err = a.client.LoadMarkets(); return err })
+	return
+}
+
+func (a *OKXBrokerAdapter) FetchFuturesMarkPrice(_ context.Context, symbol string) (price float64, err error) {
+	err = catchPanic(func() error {
+		ticker, e := a.client.FetchTicker(symbol)
+		if e != nil {
+			return e
+		}
+		// Mark price may be in Info map or fallback to Last price
+		if ticker.Last != nil && *ticker.Last > 0 {
+			price = *ticker.Last
+		} else {
+			return fmt.Errorf("no price available for %s", symbol)
+		}
+		return nil
+	})
+	return
+}
+
+func (a *OKXBrokerAdapter) CancelFuturesOrder(_ context.Context, id, symbol string) (o ccxt.Order, err error) {
+	if err := a.requireAuth(); err != nil {
+		return o, err
+	}
+	err = catchPanic(func() error { o, err = a.client.CancelOrder(id, ccxt.WithCancelOrderSymbol(symbol)); return err })
+	return
+}
+
+func (a *OKXBrokerAdapter) CancelAllFuturesOrders(_ context.Context, symbol string) (orders []ccxt.Order, err error) {
+	if err := a.requireAuth(); err != nil {
+		return nil, err
+	}
+	err = catchPanic(func() error {
+		if symbol != "" {
+			orders, err = a.client.CancelAllOrders(ccxt.WithCancelAllOrdersSymbol(symbol))
+		} else {
+			orders, err = a.client.CancelAllOrders()
+		}
+		return err
+	})
+	return
+}
+
 func copyParams(in map[string]interface{}) map[string]interface{} {
 	out := map[string]interface{}{}
 	for k, v := range in {

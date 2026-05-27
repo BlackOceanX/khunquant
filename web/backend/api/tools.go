@@ -296,32 +296,80 @@ var toolCatalog = []toolCatalogEntry{
 	{
 		Name:        tools.NameFuturesSetLeverage,
 		Description: tools.DescFuturesSetLeverage,
-		Category:    tools.CatOrders,
+		Category:    tools.CatFutures,
 		ConfigKey:   tools.NameFuturesSetLeverage,
 	},
 	{
 		Name:        tools.NameFuturesOpenPosition,
 		Description: tools.DescFuturesOpenPosition,
-		Category:    tools.CatOrders,
+		Category:    tools.CatFutures,
 		ConfigKey:   tools.NameFuturesOpenPosition,
 	},
 	{
 		Name:        tools.NameFuturesGetOrder,
 		Description: tools.DescFuturesGetOrder,
-		Category:    tools.CatOrders,
+		Category:    tools.CatFutures,
 		ConfigKey:   tools.NameFuturesGetOrder,
 	},
 	{
 		Name:        tools.NameFuturesGetPositions,
 		Description: tools.DescFuturesGetPositions,
-		Category:    tools.CatOrders,
+		Category:    tools.CatFutures,
 		ConfigKey:   tools.NameFuturesGetPositions,
 	},
 	{
 		Name:        tools.NameFuturesGetFunding,
 		Description: tools.DescFuturesGetFunding,
-		Category:    tools.CatOrders,
+		Category:    tools.CatFutures,
 		ConfigKey:   tools.NameFuturesGetFunding,
+	},
+	{
+		Name:        tools.NameFuturesValidateMarket,
+		Description: tools.DescFuturesValidateMarket,
+		Category:    tools.CatFutures,
+		ConfigKey:   tools.NameFuturesValidateMarket,
+	},
+	{
+		Name:        tools.NameFuturesRiskSummary,
+		Description: tools.DescFuturesRiskSummary,
+		Category:    tools.CatFutures,
+		ConfigKey:   tools.NameFuturesRiskSummary,
+	},
+	{
+		Name:        tools.NameFuturesEstimateFundingFee,
+		Description: tools.DescFuturesEstimateFundingFee,
+		Category:    tools.CatFutures,
+		ConfigKey:   tools.NameFuturesEstimateFundingFee,
+	},
+	{
+		Name:        tools.NameFuturesClosePosition,
+		Description: tools.DescFuturesClosePosition,
+		Category:    tools.CatFutures,
+		ConfigKey:   tools.NameFuturesClosePosition,
+	},
+	{
+		Name:        tools.NameFuturesReducePosition,
+		Description: tools.DescFuturesReducePosition,
+		Category:    tools.CatFutures,
+		ConfigKey:   tools.NameFuturesReducePosition,
+	},
+	{
+		Name:        tools.NameFuturesModifyProtection,
+		Description: tools.DescFuturesModifyProtection,
+		Category:    tools.CatFutures,
+		ConfigKey:   tools.NameFuturesModifyProtection,
+	},
+	{
+		Name:        tools.NameFuturesCancelOrders,
+		Description: tools.DescFuturesCancelOrders,
+		Category:    tools.CatFutures,
+		ConfigKey:   tools.NameFuturesCancelOrders,
+	},
+	{
+		Name:        tools.NameFuturesEmergencyFlatten,
+		Description: tools.DescFuturesEmergencyFlatten,
+		Category:    tools.CatFutures,
+		ConfigKey:   tools.NameFuturesEmergencyFlatten,
 	},
 
 	// Alert and transfer tools (Track D)
@@ -608,8 +656,14 @@ func applyToolState(cfg *config.Config, toolName string, enabled bool) error {
 	case tools.NameEmergencyStop:
 		cfg.Tools.EmergencyStop.Enabled = enabled
 	case tools.NameFuturesSetLeverage:
+		if enabled && !cfg.TradingRisk.AllowLeverage {
+			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
+		}
 		cfg.Tools.FuturesSetLeverage.Enabled = enabled
 	case tools.NameFuturesOpenPosition:
+		if enabled && !cfg.TradingRisk.AllowLeverage {
+			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
+		}
 		cfg.Tools.FuturesOpenPosition.Enabled = enabled
 	case tools.NameFuturesGetOrder:
 		cfg.Tools.FuturesGetOrder.Enabled = enabled
@@ -617,6 +671,34 @@ func applyToolState(cfg *config.Config, toolName string, enabled bool) error {
 		cfg.Tools.FuturesGetPositions.Enabled = enabled
 	case tools.NameFuturesGetFunding:
 		cfg.Tools.FuturesGetFunding.Enabled = enabled
+	case tools.NameFuturesValidateMarket:
+		cfg.Tools.FuturesValidateMarket.Enabled = enabled
+	case tools.NameFuturesRiskSummary:
+		cfg.Tools.FuturesRiskSummary.Enabled = enabled
+	case tools.NameFuturesEstimateFundingFee:
+		cfg.Tools.FuturesEstimateFundingFee.Enabled = enabled
+	case tools.NameFuturesClosePosition:
+		if enabled && !cfg.TradingRisk.AllowLeverage {
+			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
+		}
+		cfg.Tools.FuturesClosePosition.Enabled = enabled
+	case tools.NameFuturesReducePosition:
+		if enabled && !cfg.TradingRisk.AllowLeverage {
+			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
+		}
+		cfg.Tools.FuturesReducePosition.Enabled = enabled
+	case tools.NameFuturesModifyProtection:
+		if enabled && !cfg.TradingRisk.AllowLeverage {
+			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
+		}
+		cfg.Tools.FuturesModifyProtection.Enabled = enabled
+	case tools.NameFuturesCancelOrders:
+		cfg.Tools.FuturesCancelOrders.Enabled = enabled
+	case tools.NameFuturesEmergencyFlatten:
+		if enabled && !cfg.TradingRisk.AllowLeverage {
+			return fmt.Errorf("tool %q requires allow_leverage to be true", toolName)
+		}
+		cfg.Tools.FuturesEmergencyFlatten.Enabled = enabled
 	case tools.NameCreateDCAPlan:
 		cfg.Tools.CreateDCAPlan.Enabled = enabled
 	case tools.NameListDCAPlans:

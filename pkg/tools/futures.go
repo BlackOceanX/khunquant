@@ -14,6 +14,20 @@ import (
 
 const maxFuturesFundingHistoryLimit = 100
 
+// futuresProviderFn can be overridden in tests.
+var futuresProviderFn = func(ctx context.Context, cfg *config.Config, providerID, account string) (broker.FuturesProvider, error) {
+	p, err := broker.CreateProviderForAccount(providerID, account, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("provider %q: %w", providerID, err)
+	}
+	fp, ok := p.(broker.FuturesProvider)
+	if !ok {
+		return nil, fmt.Errorf("provider %q does not support futures trading (Binance TH and Bitkub are spot-only here)", providerID)
+	}
+	_ = ctx
+	return fp, nil
+}
+
 func normalizeFuturesSymbol(symbol string) string {
 	s := strings.ToUpper(strings.TrimSpace(strings.ReplaceAll(symbol, "_", "/")))
 	if s == "" || strings.Contains(s, ":") {
@@ -36,16 +50,7 @@ func normalizeFuturesSymbol(symbol string) string {
 }
 
 func futuresProvider(ctx context.Context, cfg *config.Config, providerID, account string) (broker.FuturesProvider, error) {
-	p, err := broker.CreateProviderForAccount(providerID, account, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("provider %q: %w", providerID, err)
-	}
-	fp, ok := p.(broker.FuturesProvider)
-	if !ok {
-		return nil, fmt.Errorf("provider %q does not support futures trading (Binance TH and Bitkub are spot-only here)", providerID)
-	}
-	_ = ctx
-	return fp, nil
+	return futuresProviderFn(ctx, cfg, providerID, account)
 }
 
 func futuresPositionSide(side string) (string, string, error) {
@@ -127,6 +132,9 @@ func (t *FuturesSetLeverageTool) Execute(ctx context.Context, args map[string]an
 	if lev > 125 {
 		return ErrorResult("leverage must be <= 125")
 	}
+	if err := broker.CheckLeverage(t.cfg, "set leverage"); err != nil {
+		return ErrorResult(err.Error())
+	}
 	if !confirm {
 		return UserResult(fmt.Sprintf("Dry-run: would set %dx leverage on %s %s (%s). Set confirm=true to apply.", lev, providerID, symbol, marginMode))
 	}
@@ -136,6 +144,9 @@ func (t *FuturesSetLeverageTool) Execute(ctx context.Context, args map[string]an
 	fp, err := futuresProvider(ctx, t.cfg, providerID, account)
 	if err != nil {
 		return ErrorResult(err.Error()).WithError(err)
+	}
+	if _, err := validateActiveSwapMarket(ctx, fp, symbol, lev); err != nil {
+		return ErrorResult(err.Error())
 	}
 	if _, err := fp.SetFuturesLeverage(ctx, symbol, lev, marginMode, positionSide); err != nil {
 		return ErrorResult(fmt.Sprintf("futures_set_leverage failed: %v", err)).WithError(err)
@@ -199,6 +210,7 @@ func (t *FuturesOpenPositionTool) Execute(ctx context.Context, args map[string]a
 	stopLoss := numberArg(args, "stop_loss")
 	takeProfit := numberArg(args, "take_profit")
 
+	// Step 1: basic validation
 	if providerID == "" || symbol == "" || amount <= 0 || lev <= 0 {
 		return ErrorResult("provider, symbol, amount, and positive leverage are required")
 	}
@@ -211,39 +223,60 @@ func (t *FuturesOpenPositionTool) Execute(ctx context.Context, args map[string]a
 	if orderType == "limit" && price == nil {
 		return ErrorResult("price is required for limit futures entries")
 	}
-	if providerID != "binance" && providerID != "okx" {
-		return ErrorResult("futures trading is currently supported only for binance and okx")
+
+	// Step 2: leverage opt-in
+	if err := broker.CheckLeverage(t.cfg, "open futures position"); err != nil {
+		return ErrorResult(err.Error())
 	}
 
-	notional := amount
-	if price != nil {
-		notional *= *price
-	}
-	if !confirm {
-		return UserResult(fmt.Sprintf("Dry-run: would open %s %s %.8g %s at %dx %s on %s%s%s. Set confirm=true to execute.",
-			positionSide, orderType, amount, symbol, lev, marginMode, providerID,
-			priceText(price), protectionText(stopLoss, takeProfit)))
-	}
+	// Step 3: permission
 	if err := broker.CheckPermission(t.cfg, providerID, account, config.ScopeTrade); err != nil {
 		return ErrorResult(err.Error())
 	}
+
+	// Step 4: daily loss limit and rate limit
 	if err := broker.GlobalLossTracker.CheckDailyLoss(t.cfg.TradingRisk.DailyLossLimitUSD); err != nil {
 		return ErrorResult(err.Error())
-	}
-	if notional > positionWarnThresholdUSD && price != nil {
-		return ErrorResult(fmt.Sprintf("large futures position warning: notional value %.2f exceeds %.0f USD. Re-run only after explicit user confirmation.", notional, float64(positionWarnThresholdUSD)))
 	}
 	if !broker.DefaultLimiter.Allow(providerID) {
 		return ErrorResult(fmt.Sprintf("rate limit exceeded for provider %q - try again in a minute", providerID)).WithError(broker.ErrRateLimited)
 	}
 
+	// Step 5 (dry-run): return before any network calls — all permission/risk gates above
+	// have already been validated; notional is unavailable without a live provider.
+	if !confirm {
+		return UserResult(fmt.Sprintf("Dry-run: would open %s %s %.8g %s at %dx %s on %s%s%s. Set confirm=true to execute.",
+			positionSide, orderType, amount, symbol, lev, marginMode, providerID,
+			priceText(price), protectionText(stopLoss, takeProfit)))
+	}
+
+	// Step 6: acquire provider and validate market (also checks leverage ceiling)
 	fp, err := futuresProvider(ctx, t.cfg, providerID, account)
 	if err != nil {
 		return ErrorResult(err.Error()).WithError(err)
 	}
+	if _, err := validateActiveSwapMarket(ctx, fp, symbol, lev); err != nil {
+		return ErrorResult(err.Error())
+	}
+
+	// Step 6: notional estimation and size check
+	notional, notionalSource, err := estimateFuturesNotional(ctx, fp, symbol, amount, price)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("cannot estimate order notional: %v", err))
+	}
+	if t.cfg.TradingRisk.MaxOrderValueUSD > 0 && notional > t.cfg.TradingRisk.MaxOrderValueUSD {
+		return ErrorResult(fmt.Sprintf("order notional %.2f USD (from %s price) exceeds configured max_order_value_usd %.2f", notional, notionalSource, t.cfg.TradingRisk.MaxOrderValueUSD))
+	}
+	if notional > positionWarnThresholdUSD {
+		return ErrorResult(fmt.Sprintf("large futures position warning: notional %.2f USD (from %s price) exceeds %.0f USD. Re-run only after explicit user confirmation.", notional, notionalSource, float64(positionWarnThresholdUSD)))
+	}
+
+	// Step 8: set leverage
 	if _, err := fp.SetFuturesLeverage(ctx, symbol, lev, marginMode, positionSide); err != nil {
 		return ErrorResult(fmt.Sprintf("set leverage failed: %v", err)).WithError(err)
 	}
+
+	// Step 9: place entry order
 	entry, err := fp.CreateFuturesOrder(ctx, broker.FuturesOrderRequest{
 		Symbol:       symbol,
 		OrderType:    orderType,
@@ -257,30 +290,61 @@ func (t *FuturesOpenPositionTool) Execute(ctx context.Context, args map[string]a
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("entry order failed: %v", err)).WithError(err)
 	}
+	entryID := orderID(entry)
 
-	var protective []string
+	// Step 10: verify fill and detect partial fills
+	protectionAmount := amount
+	var fillNote string
+	if entryID != "-" {
+		filled, status, partial, fillErr := verifyFuturesFill(ctx, fp, entryID, symbol, amount)
+		if fillErr == nil {
+			if filled == 0 && (status == "rejected" || status == "expired" || status == "canceled") {
+				return ErrorResult(fmt.Sprintf("entry order %s %s — no fill achieved, position not opened", entryID, status))
+			}
+			if partial {
+				protectionAmount = filled
+				fillNote = fmt.Sprintf(" (partial fill: %.8g / %.8g filled)", filled, amount)
+			}
+		}
+	}
+
+	// Step 11: place protection orders (SL/TP)
+	var protectiveLines []string
 	closeSide := futuresCloseSide(positionSide)
+	var protectionErr bool
+
 	if stopLoss > 0 {
 		slParams := map[string]interface{}{"stopLossPrice": stopLoss}
-		order, err := fp.CreateFuturesOrder(ctx, broker.FuturesOrderRequest{
-			Symbol: symbol, OrderType: "market", Side: closeSide, Amount: amount,
+		order, slErr := fp.CreateFuturesOrder(ctx, broker.FuturesOrderRequest{
+			Symbol: symbol, OrderType: "market", Side: closeSide, Amount: protectionAmount,
 			MarginMode: marginMode, PositionSide: positionSide, ReduceOnly: true, Params: slParams,
 		})
-		protective = append(protective, formatOrderLine("stop_loss", order, err))
+		protectiveLines = append(protectiveLines, formatOrderLine("stop_loss", order, slErr))
+		if slErr != nil {
+			protectionErr = true
+		}
 	}
 	if takeProfit > 0 {
 		tpParams := map[string]interface{}{"takeProfitPrice": takeProfit}
-		order, err := fp.CreateFuturesOrder(ctx, broker.FuturesOrderRequest{
-			Symbol: symbol, OrderType: "market", Side: closeSide, Amount: amount,
+		order, tpErr := fp.CreateFuturesOrder(ctx, broker.FuturesOrderRequest{
+			Symbol: symbol, OrderType: "market", Side: closeSide, Amount: protectionAmount,
 			MarginMode: marginMode, PositionSide: positionSide, ReduceOnly: true, Params: tpParams,
 		})
-		protective = append(protective, formatOrderLine("take_profit", order, err))
+		protectiveLines = append(protectiveLines, formatOrderLine("take_profit", order, tpErr))
+		if tpErr != nil {
+			protectionErr = true
+		}
 	}
 
-	out := fmt.Sprintf("Futures position entry placed on %s:\n  Entry order: %s\n  Symbol:      %s\n  Side:        %s\n  Amount:      %.8g\n  Leverage:    %dx\n  Margin mode: %s\n",
-		providerID, orderID(entry), symbol, positionSide, amount, lev, marginMode)
-	if len(protective) > 0 {
-		out += "\nProtection orders:\n  " + strings.Join(protective, "\n  ") + "\n"
+	out := fmt.Sprintf("Futures position entry placed on %s%s:\n  Entry order: %s\n  Symbol:      %s\n  Side:        %s\n  Amount:      %.8g\n  Leverage:    %dx\n  Margin mode: %s\n  Notional:    %.2f USD (from %s)\n",
+		providerID, fillNote, entryID, symbol, positionSide, protectionAmount, lev, marginMode, notional, notionalSource)
+	if len(protectiveLines) > 0 {
+		out += "\nProtection orders:\n  " + strings.Join(protectiveLines, "\n  ") + "\n"
+	}
+
+	// Protection failure is CRITICAL — return as an error
+	if protectionErr {
+		return ErrorResult(fmt.Sprintf("UNPROTECTED POSITION — protection order placement failed for entry %s. Use futures_modify_protection to add stop-loss/take-profit, or futures_close_position to close immediately.\n\n%s", entryID, out))
 	}
 	return UserResult(out)
 }

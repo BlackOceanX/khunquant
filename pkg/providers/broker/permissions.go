@@ -83,6 +83,15 @@ func CheckRisk(cfg *config.Config, side, orderType string, amount float64, price
 	return nil
 }
 
+// CheckLeverage rejects futures actions when trading_risk.allow_leverage is false.
+// Every live futures mutation tool must call this before executing.
+func CheckLeverage(cfg *config.Config, action string) error {
+	if !cfg.TradingRisk.AllowLeverage {
+		return fmt.Errorf("%s requires trading_risk.allow_leverage=true — leverage trading is disabled by default", action)
+	}
+	return nil
+}
+
 func isMarginOrderType(t string) bool {
 	switch strings.ToLower(t) {
 	case "margin", "margin_market", "margin_limit":
