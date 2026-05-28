@@ -730,3 +730,94 @@ func (t *scriptedTransport) Close() error {
 func (t *scriptedTransport) SessionID() string {
 	return t.sessionID
 }
+
+func TestShouldReconnectCallError_StringMatch(t *testing.T) {
+	// errors.Is is false but string contains the sentinel text
+	err := fmt.Errorf("proxy error: Session Not Found")
+	if !shouldReconnectCallError(err) {
+		t.Error("shouldReconnectCallError should return true when error string contains sentinel text")
+	}
+}
+
+func TestShouldReconnectCallError_UnrelatedError(t *testing.T) {
+	err := fmt.Errorf("connection timeout")
+	if shouldReconnectCallError(err) {
+		t.Error("shouldReconnectCallError should return false for unrelated errors")
+	}
+}
+
+func TestExpandHomeCommandPath_TildeOnly(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+
+	got := expandHomeCommandPath("~")
+	// Should return the home directory itself (not leave it as "~")
+	if got == "~" {
+		t.Errorf("expandHomeCommandPath('~') = %q, expected home directory", got)
+	}
+}
+
+func TestExpandHomeCommandPath_Empty(t *testing.T) {
+	if got := expandHomeCommandPath(""); got != "" {
+		t.Errorf("expandHomeCommandPath('') = %q, want empty", got)
+	}
+}
+
+func TestExpandHomeCommandPath_TildeNoSlash(t *testing.T) {
+	// ~username form should be left unchanged
+	got := expandHomeCommandPath("~otheruser/bin")
+	if got != "~otheruser/bin" {
+		t.Errorf("expandHomeCommandPath(~otheruser/bin) = %q, want unchanged", got)
+	}
+}
+
+func TestReconnectServer_NilStaleConn(t *testing.T) {
+	mgr := NewManager()
+	_, err := mgr.reconnectServer(context.Background(), "missing", nil)
+	if err == nil {
+		t.Error("reconnectServer(nil) should return error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' in error, got: %v", err)
+	}
+}
+
+func TestReconnectServer_ClosedManager(t *testing.T) {
+	conn, _, err := newScriptedServerConnection("session-close", nil, nil)
+	if err != nil {
+		t.Fatalf("newScriptedServerConnection error = %v", err)
+	}
+
+	mgr := NewManager()
+	mgr.closed.Store(true)
+	_, reconnErr := mgr.reconnectServer(context.Background(), "server", conn)
+	if reconnErr == nil {
+		t.Error("reconnectServer on closed manager should return error")
+	}
+}
+
+func TestConnectServer_ManagerClosedAfterConnect(t *testing.T) {
+	originalFunc := connectServerFunc
+	t.Cleanup(func() { connectServerFunc = originalFunc })
+
+	conn, _, err := newScriptedServerConnection("session-test", nil, nil)
+	if err != nil {
+		t.Fatalf("newScriptedServerConnection error = %v", err)
+	}
+
+	mgr := NewManager()
+	connectServerFunc = func(ctx context.Context, name string, cfg config.MCPServerConfig) (*ServerConnection, error) {
+		// Simulate manager being closed between connect and registration
+		mgr.closed.Store(true)
+		return conn, nil
+	}
+
+	err = mgr.ConnectServer(context.Background(), "test", config.MCPServerConfig{})
+	if err == nil {
+		t.Error("ConnectServer should return error when manager is closed after connect")
+	}
+	if !strings.Contains(err.Error(), "manager is closed") {
+		t.Errorf("expected 'manager is closed' error, got: %v", err)
+	}
+}
