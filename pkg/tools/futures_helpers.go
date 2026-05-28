@@ -56,6 +56,28 @@ func validateActiveSwapMarket(ctx context.Context, fp broker.FuturesProvider, sy
 	return m, nil
 }
 
+// contractsFromNotional converts a USD notional value to the number of contracts
+// for a given market. Returns the contract count rounded up to the market's
+// minimum amount step. contractSize is the base-currency value per contract
+// (e.g. 0.01 BTC/contract for BTC/USDT:USDT on OKX).
+func contractsFromNotional(notionalUSD, markPrice, contractSize, minAmount float64) (float64, error) {
+	if markPrice <= 0 {
+		return 0, fmt.Errorf("mark price must be positive")
+	}
+	if contractSize <= 0 {
+		contractSize = 1 // fall back: treat 1 unit = 1 contract
+	}
+	usdPerContract := contractSize * markPrice
+	contracts := notionalUSD / usdPerContract
+	if minAmount <= 0 {
+		minAmount = 1
+	}
+	// Round UP to nearest step of minAmount
+	steps := math.Ceil(contracts / minAmount)
+	rounded := steps * minAmount
+	return rounded, nil
+}
+
 // verifyFuturesFill re-fetches a futures order to detect partial fills.
 // Returns (filled, status, isPartial, err).
 func verifyFuturesFill(ctx context.Context, fp broker.FuturesProvider, id, symbol string, requestedAmount float64) (float64, string, bool, error) {

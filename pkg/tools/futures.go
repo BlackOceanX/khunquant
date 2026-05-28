@@ -174,7 +174,8 @@ func (t *FuturesOpenPositionTool) Parameters() map[string]any {
 			"account":     map[string]any{"type": "string", "description": "Account name (empty = default)."},
 			"symbol":      map[string]any{"type": "string", "description": "Perp symbol, e.g. BTC/USDT:USDT, BTC/USDT, or BTCUSDT."},
 			"side":        map[string]any{"type": "string", "enum": []string{"long", "short"}, "description": "Position direction."},
-			"amount":      map[string]any{"type": "number", "description": "Contract/base quantity as expected by the exchange market."},
+			"amount":      map[string]any{"type": "number", "description": "Position size in CONTRACTS (e.g. 0.01 = 1 contract on OKX BTC/USDT:USDT). Use notional_usd instead to specify a dollar value and let the tool compute contracts."},
+			"notional_usd": map[string]any{"type": "number", "description": "Desired position size in USD. The tool fetches the mark price and contract size, then computes the required number of contracts automatically. Provide either amount or notional_usd, not both."},
 			"leverage":    map[string]any{"type": "integer", "description": "Initial leverage, 1-125."},
 			"margin_mode": map[string]any{"type": "string", "enum": []string{"cross", "isolated"}, "description": "Default cross."},
 			"order_type":  map[string]any{"type": "string", "enum": []string{"market", "limit"}, "description": "Default market."},
@@ -184,7 +185,7 @@ func (t *FuturesOpenPositionTool) Parameters() map[string]any {
 			"params":      map[string]any{"type": "object", "description": "Extra CCXT/exchange params."},
 			"confirm":     map[string]any{"type": "boolean", "description": "Must be true to place live futures orders."},
 		},
-		"required": []string{"provider", "symbol", "side", "amount", "leverage", "confirm"},
+		"required": []string{"provider", "symbol", "side", "leverage", "confirm"},
 	}
 }
 
@@ -194,6 +195,7 @@ func (t *FuturesOpenPositionTool) Execute(ctx context.Context, args map[string]a
 	symbol := normalizeFuturesSymbol(stringArg(args, "symbol"))
 	entrySide, positionSide, sideErr := futuresPositionSide(stringArg(args, "side"))
 	amount := numberArg(args, "amount")
+	notionalUSD := numberArg(args, "notional_usd")
 	lev := int64(numberArg(args, "leverage"))
 	marginMode := marginModeOrDefault(stringArg(args, "margin_mode"))
 	orderType := strings.ToLower(stringArg(args, "order_type"))
@@ -211,8 +213,14 @@ func (t *FuturesOpenPositionTool) Execute(ctx context.Context, args map[string]a
 	takeProfit := numberArg(args, "take_profit")
 
 	// Step 1: basic validation
-	if providerID == "" || symbol == "" || amount <= 0 || lev <= 0 {
-		return ErrorResult("provider, symbol, amount, and positive leverage are required")
+	if providerID == "" || symbol == "" || lev <= 0 {
+		return ErrorResult("provider, symbol, leverage are required")
+	}
+	if amount <= 0 && notionalUSD <= 0 {
+		return ErrorResult("provide either amount (in contracts) or notional_usd (in USD)")
+	}
+	if amount > 0 && notionalUSD > 0 {
+		return ErrorResult("provide either amount or notional_usd, not both")
 	}
 	if sideErr != nil {
 		return ErrorResult(sideErr.Error())
@@ -245,8 +253,12 @@ func (t *FuturesOpenPositionTool) Execute(ctx context.Context, args map[string]a
 	// Step 5 (dry-run): return before any network calls — all permission/risk gates above
 	// have already been validated; notional is unavailable without a live provider.
 	if !confirm {
-		return UserResult(fmt.Sprintf("Dry-run: would open %s %s %.8g %s at %dx %s on %s%s%s. Set confirm=true to execute.",
-			positionSide, orderType, amount, symbol, lev, marginMode, providerID,
+		sizeDesc := fmt.Sprintf("%.8g contracts", amount)
+		if notionalUSD > 0 {
+			sizeDesc = fmt.Sprintf("~%.2f USD notional (contracts computed at execution)", notionalUSD)
+		}
+		return UserResult(fmt.Sprintf("Dry-run: would open %s %s %s %s at %dx %s on %s%s%s. Set confirm=true to execute.",
+			positionSide, orderType, sizeDesc, symbol, lev, marginMode, providerID,
 			priceText(price), protectionText(stopLoss, takeProfit)))
 	}
 
@@ -255,11 +267,40 @@ func (t *FuturesOpenPositionTool) Execute(ctx context.Context, args map[string]a
 	if err != nil {
 		return ErrorResult(err.Error()).WithError(err)
 	}
-	if _, err := validateActiveSwapMarket(ctx, fp, symbol, lev); err != nil {
+	mkt, err := validateActiveSwapMarket(ctx, fp, symbol, lev)
+	if err != nil {
 		return ErrorResult(err.Error())
 	}
 
-	// Step 6: notional estimation and size check
+	// Step 6b: if notional_usd provided, compute contract count from mark price + market metadata
+	if notionalUSD > 0 {
+		markPrice, mpErr := fp.FetchFuturesMarkPrice(ctx, symbol)
+		if mpErr != nil || markPrice <= 0 {
+			return ErrorResult(fmt.Sprintf("cannot resolve mark price for %s to compute contract count: %v", symbol, mpErr))
+		}
+		contractSize := 1.0
+		if mkt.ContractSize != nil && *mkt.ContractSize > 0 {
+			contractSize = *mkt.ContractSize
+		}
+		minAmount := 1.0
+		if mkt.Limits.Amount.Min != nil && *mkt.Limits.Amount.Min > 0 {
+			minAmount = *mkt.Limits.Amount.Min
+		}
+		computed, convErr := contractsFromNotional(notionalUSD, markPrice, contractSize, minAmount)
+		if convErr != nil {
+			return ErrorResult(fmt.Sprintf("contract computation failed: %v", convErr))
+		}
+		// Parse base currency from symbol for display
+		baseCur := symbol
+		if idx := strings.Index(symbol, "/"); idx > 0 {
+			baseCur = symbol[:idx]
+		}
+		amount = computed
+		// Update dry-run hint in result for transparency
+		_ = fmt.Sprintf("notional_usd %.2f → %.8g contracts (%.8g %s each, mark %.2f)", notionalUSD, amount, contractSize, baseCur, markPrice)
+	}
+
+	// Step 7: notional estimation and size check
 	notional, notionalSource, err := estimateFuturesNotional(ctx, fp, symbol, amount, price)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("cannot estimate order notional: %v", err))

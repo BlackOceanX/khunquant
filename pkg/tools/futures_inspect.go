@@ -70,8 +70,20 @@ func (t *FuturesValidateMarketTool) Execute(ctx context.Context, args map[string
 	if m.Settle != nil {
 		sb.WriteString(fmt.Sprintf("  Settle:        %s\n", *m.Settle))
 	}
+	// Parse base currency from symbol (e.g. "BTC/USDT:USDT" → "BTC")
+	baseCurrency := ""
+	if idx := strings.Index(symbol, "/"); idx > 0 {
+		baseCurrency = symbol[:idx]
+	}
+
+	contractSize := 0.0
 	if m.ContractSize != nil {
-		sb.WriteString(fmt.Sprintf("  Contract size: %.8g\n", *m.ContractSize))
+		contractSize = *m.ContractSize
+		baseUnit := baseCurrency
+		if baseUnit == "" {
+			baseUnit = "base"
+		}
+		sb.WriteString(fmt.Sprintf("  Contract size: %.8g %s per contract\n", contractSize, baseUnit))
 	}
 	if m.Taker != nil {
 		sb.WriteString(fmt.Sprintf("  Taker fee:     %.4f%%\n", *m.Taker*100))
@@ -80,10 +92,20 @@ func (t *FuturesValidateMarketTool) Execute(ctx context.Context, args map[string
 		sb.WriteString(fmt.Sprintf("  Maker fee:     %.4f%%\n", *m.Maker*100))
 	}
 	if m.Limits.Amount.Min != nil {
-		sb.WriteString(fmt.Sprintf("  Min amount:    %.8g\n", *m.Limits.Amount.Min))
+		minContracts := *m.Limits.Amount.Min
+		if contractSize > 0 && baseCurrency != "" {
+			minBase := minContracts * contractSize
+			sb.WriteString(fmt.Sprintf("  Min amount:    %.8g contracts (= %.8g %s)\n", minContracts, minBase, baseCurrency))
+		} else {
+			sb.WriteString(fmt.Sprintf("  Min amount:    %.8g contracts\n", minContracts))
+		}
 	}
 	if m.Limits.Cost.Min != nil {
-		sb.WriteString(fmt.Sprintf("  Min cost:      %.8g\n", *m.Limits.Cost.Min))
+		settle := "USDT"
+		if m.Settle != nil {
+			settle = *m.Settle
+		}
+		sb.WriteString(fmt.Sprintf("  Min cost:      %.8g %s\n", *m.Limits.Cost.Min, settle))
 	}
 	if m.Limits.Leverage.Min != nil && m.Limits.Leverage.Max != nil {
 		sb.WriteString(fmt.Sprintf("  Leverage:      %.0f–%.0f\n", *m.Limits.Leverage.Min, *m.Limits.Leverage.Max))

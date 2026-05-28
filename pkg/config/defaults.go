@@ -641,6 +641,9 @@ func DefaultConfig() *Config {
 				Enabled: false,
 			},
 		},
+		TradingRisk: TradingRiskConfig{
+			AllowLeverage: true,
+		},
 		Heartbeat: HeartbeatConfig{
 			Enabled:  true,
 			Interval: 30,

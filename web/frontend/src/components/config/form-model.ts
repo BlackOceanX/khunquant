@@ -16,6 +16,8 @@ export interface CoreConfigForm {
   devicesEnabled: boolean
   monitorUSB: boolean
   followUpNudge: boolean
+  allowLeverage: boolean
+  paperTradingMode: boolean
 }
 
 export const CONTEXT_MANAGER_OPTIONS = [
@@ -88,6 +90,8 @@ export const EMPTY_FORM: CoreConfigForm = {
   devicesEnabled: false,
   monitorUSB: true,
   followUpNudge: false,
+  allowLeverage: true,
+  paperTradingMode: false,
 }
 
 export const EMPTY_LAUNCHER_FORM: LauncherForm = {
@@ -130,6 +134,7 @@ export function buildFormFromConfig(config: unknown): CoreConfigForm {
   const devices = asRecord(root.devices)
   const tools = asRecord(root.tools)
   const exec = asRecord(tools.exec)
+  const tradingRisk = asRecord(root.trading_risk)
   return {
     workspace: asString(defaults.workspace) || EMPTY_FORM.workspace,
     restrictToWorkspace:
@@ -177,6 +182,14 @@ export function buildFormFromConfig(config: unknown): CoreConfigForm {
       defaults.follow_up_nudge === undefined
         ? EMPTY_FORM.followUpNudge
         : asBool(defaults.follow_up_nudge),
+    allowLeverage:
+      tradingRisk.allow_leverage === undefined
+        ? EMPTY_FORM.allowLeverage
+        : asBool(tradingRisk.allow_leverage),
+    paperTradingMode:
+      tradingRisk.paper_trading_mode === undefined
+        ? EMPTY_FORM.paperTradingMode
+        : asBool(tradingRisk.paper_trading_mode),
   }
 }
 

@@ -17,6 +17,7 @@ import {
   DevicesSection,
   LauncherSection,
   RuntimeSection,
+  TradingRiskSection,
 } from "@/components/config/config-sections"
 import {
   type CoreConfigForm,
@@ -201,6 +202,10 @@ export function ConfigPage() {
             enabled: form.devicesEnabled,
             monitor_usb: form.monitorUSB,
           },
+          trading_risk: {
+            allow_leverage: form.allowLeverage,
+            paper_trading_mode: form.paperTradingMode,
+          },
         })
 
         setBaseline(form)
@@ -287,6 +292,8 @@ export function ConfigPage() {
               <AgentDefaultsSection form={form} onFieldChange={updateField} />
 
               <RuntimeSection form={form} onFieldChange={updateField} />
+
+              <TradingRiskSection form={form} onFieldChange={updateField} />
 
               <LauncherSection
                 launcherForm={launcherForm}

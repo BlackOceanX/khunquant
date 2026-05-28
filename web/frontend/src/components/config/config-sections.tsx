@@ -351,6 +351,47 @@ export function LauncherSection({
   )
 }
 
+interface TradingRiskSectionProps {
+  form: CoreConfigForm
+  onFieldChange: UpdateCoreField
+}
+
+export function TradingRiskSection({ form, onFieldChange }: TradingRiskSectionProps) {
+  const { t } = useTranslation()
+
+  return (
+    <ConfigSectionCard
+      title={t("pages.config.sections.trading_risk", "Trading Risk")}
+      description={t(
+        "pages.config.sections.trading_risk_desc",
+        "Controls for live order execution and futures trading.",
+      )}
+    >
+      <SwitchCardField
+        label={t("pages.config.allow_leverage", "Allow Leverage Trading")}
+        hint={t(
+          "pages.config.allow_leverage_hint",
+          "Enable futures and leveraged order types. When disabled, the agent cannot open or close futures positions.",
+        )}
+        layout="setting-row"
+        checked={form.allowLeverage}
+        onCheckedChange={(checked) => onFieldChange("allowLeverage", checked)}
+      />
+
+      <SwitchCardField
+        label={t("pages.config.paper_trading_mode", "Paper Trading Mode")}
+        hint={t(
+          "pages.config.paper_trading_mode_hint",
+          "Simulate all orders without real execution. Safe for testing strategies.",
+        )}
+        layout="setting-row"
+        checked={form.paperTradingMode}
+        onCheckedChange={(checked) => onFieldChange("paperTradingMode", checked)}
+      />
+    </ConfigSectionCard>
+  )
+}
+
 interface DevicesSectionProps {
   form: CoreConfigForm
   onFieldChange: UpdateCoreField
