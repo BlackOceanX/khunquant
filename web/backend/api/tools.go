@@ -491,6 +491,12 @@ var toolCatalog = []toolCatalogEntry{
 		Category:    tools.CatDeltaNeutral,
 		ConfigKey:   tools.NameUnwindDeltaNeutralPosition,
 	},
+	{
+		Name:        tools.NameResizeDeltaNeutralPosition,
+		Description: tools.DescResizeDeltaNeutralPosition,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameResizeDeltaNeutralPosition,
+	},
 
 	// PnL — Profit and Loss (Track F)
 	{
@@ -769,6 +775,8 @@ func applyToolState(cfg *config.Config, toolName string, enabled bool) error {
 		cfg.Tools.OpenDeltaNeutralPosition.Enabled = enabled
 	case tools.NameUnwindDeltaNeutralPosition:
 		cfg.Tools.UnwindDeltaNeutralPosition.Enabled = enabled
+	case tools.NameResizeDeltaNeutralPosition:
+		cfg.Tools.ResizeDeltaNeutralPosition.Enabled = enabled
 	case tools.NameGetPnLSummary:
 		cfg.Tools.GetPnLSummary.Enabled = enabled
 	case tools.NameGetPnLDetail:

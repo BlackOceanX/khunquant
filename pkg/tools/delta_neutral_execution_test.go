@@ -8,10 +8,23 @@ import (
 
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
 	"github.com/cryptoquantumwave/khunquant/pkg/deltaneutral"
+	"github.com/cryptoquantumwave/khunquant/pkg/providers/broker"
 )
+
+// resetRateLimiter swaps in an always-allow limiter for the duration of the test,
+// so delta-neutral execution tests that pass the leverage gate don't drain the
+// shared global DefaultLimiter bucket (5/provider/min) and pollute later tests in
+// this package (e.g. TestFuturesOpenPosition_DryRunNormalizesSymbol). Mirrors the
+// save/restore pattern in futures_coverage_test.go's injectMockFuturesProvider.
+func resetRateLimiter(t *testing.T) {
+	orig := broker.DefaultLimiter
+	broker.DefaultLimiter = unlimitedLimiter{}
+	t.Cleanup(func() { broker.DefaultLimiter = orig })
+}
 
 // TestOpenDeltaNeutralPositionDryRun tests that dry-run does not place orders.
 func TestOpenDeltaNeutralPositionDryRun(t *testing.T) {
+	resetRateLimiter(t)
 	ctx := context.Background()
 	cfg := &config.Config{
 		TradingRisk: config.TradingRiskConfig{
@@ -173,6 +186,7 @@ func TestOpenDeltaNeutralPositionLeverageGate(t *testing.T) {
 
 // TestUnwindDeltaNeutralPositionRequireActiveOrRecovery tests that only active/recovery_required plans can be unwound.
 func TestUnwindDeltaNeutralPositionRequireActiveOrRecovery(t *testing.T) {
+	resetRateLimiter(t)
 	ctx := context.Background()
 	cfg := &config.Config{
 		TradingRisk: config.TradingRiskConfig{
@@ -224,6 +238,7 @@ func TestUnwindDeltaNeutralPositionRequireActiveOrRecovery(t *testing.T) {
 
 // TestUnwindDeltaNeutralPositionDryRun tests that dry-run does not close orders.
 func TestUnwindDeltaNeutralPositionDryRun(t *testing.T) {
+	resetRateLimiter(t)
 	ctx := context.Background()
 	cfg := &config.Config{
 		TradingRisk: config.TradingRiskConfig{

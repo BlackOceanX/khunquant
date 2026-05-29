@@ -651,6 +651,9 @@ func DefaultConfig() *Config {
 			UnwindDeltaNeutralPosition: ToolConfig{
 				Enabled: false,
 			},
+			ResizeDeltaNeutralPosition: ToolConfig{
+				Enabled: false,
+			},
 
 			// PnL — Profit and Loss (Track F)
 			GetPnLSummary: ToolConfig{

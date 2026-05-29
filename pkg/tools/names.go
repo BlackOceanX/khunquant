@@ -98,6 +98,7 @@ const (
 	NameGetDeltaNeutralHistory = "get_delta_neutral_history"
 	NameOpenDeltaNeutralPosition = "open_delta_neutral_position"
 	NameUnwindDeltaNeutralPosition = "unwind_delta_neutral_position"
+	NameResizeDeltaNeutralPosition = "resize_delta_neutral_position"
 )
 
 // Category constants for the web UI tool catalog.
@@ -185,4 +186,5 @@ const (
 	DescGetDeltaNeutralHistory = "Get paginated monitor snapshots and alerts for a delta-neutral plan."
 	DescOpenDeltaNeutralPosition = "Open a delta-neutral position (approval-mode two-leg execution: futures hedge + spot buy). HIGHEST-RISK: requires leverage opt-in, permission, daily-loss, rate-limit gates. Dry-run (confirm=false) shows review; confirm=true executes."
 	DescUnwindDeltaNeutralPosition = "Close a delta-neutral position (unwind both legs: reduce-only futures close + spot sell). Recovery tool for unhedged exposure or manual closure. Approval-mode: confirm=true required."
+	DescResizeDeltaNeutralPosition = "Adjust an active delta-neutral position by resizing both legs equally (approval-mode). Maintains delta-neutrality (equal notional on both legs). Partial fill → recovery_required. Dry-run (confirm=false) shows review; confirm=true executes."
 )

@@ -765,6 +765,9 @@ func setupCronTool(
 		if cfg.Tools.IsToolEnabled("unwind_delta_neutral_position") {
 			agentLoop.RegisterTool(tools.NewUnwindDeltaNeutralPositionTool(cfg, dnStore))
 		}
+		if cfg.Tools.IsToolEnabled("resize_delta_neutral_position") {
+			agentLoop.RegisterTool(tools.NewResizeDeltaNeutralPositionTool(cfg, dnStore))
+		}
 	}
 
 	return cronService
