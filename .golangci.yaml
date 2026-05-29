@@ -33,7 +33,6 @@ linters:
     - errchkjson
     - errorlint
     - exhaustive
-    - forbidigo
     - forcetypeassert
     - funlen
     - gochecknoinits
@@ -80,6 +79,11 @@ linters:
     lll:
       line-length: 120
       tab-width: 4
+    forbidigo:
+      forbid:
+        - pattern: '^os\.(Setenv|Unsetenv|Clearenv)'
+          msg: "use t.Setenv in tests to ensure proper cleanup; see pkg/credential/passphrase_file_test.go for examples"
+      analyze-types: false
     misspell:
       locale: US
     mnd:
@@ -144,6 +148,9 @@ linters:
       - linters:
           - nolintlint
         path: 'pkg/tools/(i2c\.go|spi\.go)$'
+      - linters:
+          - forbidigo
+        path: '^(?!.*_test\.go$).*\.go$'
 
 issues:
   max-issues-per-linter: 0

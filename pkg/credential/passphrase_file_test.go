@@ -9,14 +9,7 @@ import (
 
 // TestPassphraseFilePath_DefaultHome tests PassphraseFilePath with default home.
 func TestPassphraseFilePath_DefaultHome(t *testing.T) {
-	// Save and clear KHUNQUANT_HOME
-	oldHome := os.Getenv(khunquantHome)
-	os.Unsetenv(khunquantHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		}
-	})
+	t.Setenv(khunquantHome, "")
 
 	path := PassphraseFilePath()
 	if path == "" {
@@ -34,16 +27,8 @@ func TestPassphraseFilePath_DefaultHome(t *testing.T) {
 
 // TestPassphraseFilePath_WithKHUNQUANT_HOME tests PassphraseFilePath respects KHUNQUANT_HOME.
 func TestPassphraseFilePath_WithKHUNQUANT_HOME(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	path := PassphraseFilePath()
 	expected := filepath.Join(customHome, passphraseFileName)
@@ -54,16 +39,8 @@ func TestPassphraseFilePath_WithKHUNQUANT_HOME(t *testing.T) {
 
 // TestSavePassphraseFile_CreatesFile tests SavePassphraseFile creates the file.
 func TestSavePassphraseFile_CreatesFile(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	passphrase := "test-passphrase"
 	err := SavePassphraseFile(passphrase)
@@ -87,16 +64,8 @@ func TestSavePassphraseFile_CreatesFile(t *testing.T) {
 
 // TestSavePassphraseFile_Permissions tests SavePassphraseFile uses 0600 permissions.
 func TestSavePassphraseFile_Permissions(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	err := SavePassphraseFile("secret")
 	if err != nil {
@@ -117,17 +86,9 @@ func TestSavePassphraseFile_Permissions(t *testing.T) {
 
 // TestSavePassphraseFile_CreatesDirectory tests SavePassphraseFile creates parent directory.
 func TestSavePassphraseFile_CreatesDirectory(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
 	nestedPath := filepath.Join(customHome, "nested", "deep", "home")
-	os.Setenv(khunquantHome, nestedPath)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, nestedPath)
 
 	err := SavePassphraseFile("test")
 	if err != nil {
@@ -156,16 +117,8 @@ func TestSavePassphraseFile_CreatesDirectory(t *testing.T) {
 
 // TestSavePassphraseFile_Overwrites tests SavePassphraseFile overwrites existing file.
 func TestSavePassphraseFile_Overwrites(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Save first passphrase
 	err := SavePassphraseFile("first-pass")
@@ -194,16 +147,8 @@ func TestSavePassphraseFile_Overwrites(t *testing.T) {
 
 // TestLoadPassphraseFile_Missing returns empty string.
 func TestLoadPassphraseFile_Missing(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Don't create the file
 	result := LoadPassphraseFile()
@@ -214,16 +159,8 @@ func TestLoadPassphraseFile_Missing(t *testing.T) {
 
 // TestLoadPassphraseFile_Reads tests LoadPassphraseFile reads file correctly.
 func TestLoadPassphraseFile_Reads(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	passphrase := "saved-passphrase"
 	err := SavePassphraseFile(passphrase)
@@ -239,16 +176,8 @@ func TestLoadPassphraseFile_Reads(t *testing.T) {
 
 // TestLoadPassphraseFile_Trims tests LoadPassphraseFile trims whitespace.
 func TestLoadPassphraseFile_Trims(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Manually write file with extra whitespace
 	path := PassphraseFilePath()
@@ -264,32 +193,16 @@ func TestLoadPassphraseFile_Trims(t *testing.T) {
 
 // TestInstallFileBackedProvider_UsesEnvVar tests InstallFileBackedProvider prefers env var.
 func TestInstallFileBackedProvider_UsesEnvVar(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
+	t.Setenv(PassphraseEnvVar, "env-passphrase")
 
 	// Save a passphrase to file
 	SavePassphraseFile("file-passphrase")
 
-	// Set env var
-	oldEnvVal := os.Getenv(PassphraseEnvVar)
-	os.Setenv(PassphraseEnvVar, "env-passphrase")
-	t.Cleanup(func() {
-		if oldEnvVal != "" {
-			os.Setenv(PassphraseEnvVar, oldEnvVal)
-		} else {
-			os.Unsetenv(PassphraseEnvVar)
-		}
-	})
-
-	// Install file-backed provider
+	// Install file-backed provider, restoring after test
+	oldProvider := PassphraseProvider
+	t.Cleanup(func() { PassphraseProvider = oldProvider })
 	InstallFileBackedProvider()
 
 	result := PassphraseProvider()
@@ -300,30 +213,16 @@ func TestInstallFileBackedProvider_UsesEnvVar(t *testing.T) {
 
 // TestInstallFileBackedProvider_FallbackToFile tests InstallFileBackedProvider falls back to file.
 func TestInstallFileBackedProvider_FallbackToFile(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
-
-	// Clear env var
-	oldEnvVal := os.Getenv(PassphraseEnvVar)
-	os.Unsetenv(PassphraseEnvVar)
-	t.Cleanup(func() {
-		if oldEnvVal != "" {
-			os.Setenv(PassphraseEnvVar, oldEnvVal)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
+	t.Setenv(PassphraseEnvVar, "")
 
 	// Save a passphrase to file
 	SavePassphraseFile("file-passphrase")
 
-	// Install file-backed provider
+	// Install file-backed provider, restoring after test
+	oldProvider := PassphraseProvider
+	t.Cleanup(func() { PassphraseProvider = oldProvider })
 	InstallFileBackedProvider()
 
 	result := PassphraseProvider()
@@ -334,27 +233,13 @@ func TestInstallFileBackedProvider_FallbackToFile(t *testing.T) {
 
 // TestInstallFileBackedProvider_NoFileNoEnv tests file-backed provider with neither.
 func TestInstallFileBackedProvider_NoFileNoEnv(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
+	t.Setenv(PassphraseEnvVar, "")
 
-	// Clear env var (no file created either)
-	oldEnvVal := os.Getenv(PassphraseEnvVar)
-	os.Unsetenv(PassphraseEnvVar)
-	t.Cleanup(func() {
-		if oldEnvVal != "" {
-			os.Setenv(PassphraseEnvVar, oldEnvVal)
-		}
-	})
-
-	// Install file-backed provider
+	// Install file-backed provider, restoring after test (no file created)
+	oldProvider := PassphraseProvider
+	t.Cleanup(func() { PassphraseProvider = oldProvider })
 	InstallFileBackedProvider()
 
 	result := PassphraseProvider()
@@ -365,16 +250,8 @@ func TestInstallFileBackedProvider_NoFileNoEnv(t *testing.T) {
 
 // TestLoadPassphraseFile_EmptyFile tests LoadPassphraseFile with empty file.
 func TestLoadPassphraseFile_EmptyFile(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Create empty file
 	path := PassphraseFilePath()
@@ -389,16 +266,8 @@ func TestLoadPassphraseFile_EmptyFile(t *testing.T) {
 
 // TestLoadPassphraseFile_OnlyWhitespace tests LoadPassphraseFile with only whitespace.
 func TestLoadPassphraseFile_OnlyWhitespace(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Create file with only whitespace
 	path := PassphraseFilePath()
@@ -413,16 +282,8 @@ func TestLoadPassphraseFile_OnlyWhitespace(t *testing.T) {
 
 // TestPassphraseFile_Roundtrip tests Save and Load roundtrip.
 func TestPassphraseFile_Roundtrip(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	testCases := []string{
 		"simple-pass",
@@ -448,16 +309,8 @@ func TestPassphraseFile_Roundtrip(t *testing.T) {
 
 // TestLoadPassphraseFile_UnreadableFile tests behavior with permission-denied file.
 func TestLoadPassphraseFile_UnreadableFile(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Create file but remove read permission
 	path := PassphraseFilePath()
@@ -476,16 +329,8 @@ func TestLoadPassphraseFile_UnreadableFile(t *testing.T) {
 
 // TestSavePassphraseFile_MultipleWrites tests overwriting passphrase multiple times.
 func TestSavePassphraseFile_MultipleWrites(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Write multiple times
 	passphrases := []string{"first", "second", "third"}
@@ -510,33 +355,19 @@ func TestSavePassphraseFile_MultipleWrites(t *testing.T) {
 
 // TestInstallFileBackedProvider_EnvVarPriority tests environment variable priority.
 func TestInstallFileBackedProvider_EnvVarPriority(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Create both env var and file with different values
 	envVal := "env-value"
 	fileVal := "file-value"
 
 	SavePassphraseFile(fileVal)
+	t.Setenv(PassphraseEnvVar, envVal)
 
-	oldEnv := os.Getenv(PassphraseEnvVar)
-	os.Setenv(PassphraseEnvVar, envVal)
-	t.Cleanup(func() {
-		if oldEnv != "" {
-			os.Setenv(PassphraseEnvVar, oldEnv)
-		} else {
-			os.Unsetenv(PassphraseEnvVar)
-		}
-	})
-
+	// Install file-backed provider, restoring after test
+	oldProvider := PassphraseProvider
+	t.Cleanup(func() { PassphraseProvider = oldProvider })
 	InstallFileBackedProvider()
 
 	// Env var should take priority
@@ -548,16 +379,8 @@ func TestInstallFileBackedProvider_EnvVarPriority(t *testing.T) {
 
 // TestLoadPassphraseFile_Symlink tests loading from a symlink.
 func TestLoadPassphraseFile_Symlink(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Create actual file at a different location
 	actualFile := filepath.Join(customHome, "actual_pass")

@@ -454,9 +454,7 @@ func TestFindDefaultSSHKey_FileExists(t *testing.T) {
 		t.Fatalf("GenerateSSHKey: %v", err)
 	}
 
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", fakeHome)
-	t.Cleanup(func() { os.Setenv("HOME", origHome) })
+	t.Setenv("HOME", fakeHome)
 
 	got := findDefaultSSHKey()
 	if got == "" {

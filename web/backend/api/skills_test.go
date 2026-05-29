@@ -54,17 +54,7 @@ func TestHandleListSkills(t *testing.T) {
 	}
 
 	builtinRoot := filepath.Join(t.TempDir(), "builtin-skills")
-	oldBuiltin := os.Getenv("KHUNQUANT_BUILTIN_SKILLS")
-	if err := os.Setenv("KHUNQUANT_BUILTIN_SKILLS", builtinRoot); err != nil {
-		t.Fatalf("Setenv(KHUNQUANT_BUILTIN_SKILLS) error = %v", err)
-	}
-	defer func() {
-		if oldBuiltin == "" {
-			_ = os.Unsetenv("KHUNQUANT_BUILTIN_SKILLS")
-		} else {
-			_ = os.Setenv("KHUNQUANT_BUILTIN_SKILLS", oldBuiltin)
-		}
-	}()
+	t.Setenv("KHUNQUANT_BUILTIN_SKILLS", builtinRoot)
 
 	builtinSkillDir := filepath.Join(builtinRoot, "builtin-skill")
 	if err := os.MkdirAll(builtinSkillDir, 0o755); err != nil {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -222,15 +221,9 @@ func setupOAuthTestEnv(t *testing.T) (string, func()) {
 	t.Helper()
 
 	tmp := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	oldPicoHome := os.Getenv("KHUNQUANT_HOME")
 
-	if err := os.Setenv("HOME", tmp); err != nil {
-		t.Fatalf("set HOME: %v", err)
-	}
-	if err := os.Setenv("KHUNQUANT_HOME", filepath.Join(tmp, ".khunquant")); err != nil {
-		t.Fatalf("set KHUNQUANT_HOME: %v", err)
-	}
+	t.Setenv("HOME", tmp)
+	t.Setenv("KHUNQUANT_HOME", filepath.Join(tmp, ".khunquant"))
 
 	cfg := config.DefaultConfig()
 	cfg.ModelList = []config.ModelConfig{{
@@ -245,14 +238,7 @@ func setupOAuthTestEnv(t *testing.T) (string, func()) {
 		t.Fatalf("SaveConfig error: %v", err)
 	}
 
-	cleanup := func() {
-		_ = os.Setenv("HOME", oldHome)
-		if oldPicoHome == "" {
-			_ = os.Unsetenv("KHUNQUANT_HOME")
-		} else {
-			_ = os.Setenv("KHUNQUANT_HOME", oldPicoHome)
-		}
-	}
+	cleanup := func() {}
 	return configPath, cleanup
 }
 

@@ -1215,6 +1215,55 @@ func LoadConfig(path string) (*Config, error) {
 	return cfg, nil
 }
 
+// LoadConfigSkipSecurity loads the JSON config without overlaying the security
+// file. This is a fallback for callers that only need non-credential fields
+// (e.g. AuthMethod) when the security file cannot be decrypted.
+func LoadConfigSkipSecurity(path string) (*Config, error) {
+	cfg := DefaultConfig()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return nil, err
+	}
+
+	var tmp Config
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return nil, err
+	}
+	if len(tmp.ModelList) > 0 {
+		cfg.ModelList = nil
+	}
+
+	updateResolver(path)
+
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+
+	if err := env.Parse(cfg); err != nil {
+		return nil, err
+	}
+
+	cfg.migrateChannelConfigs()
+
+	if len(cfg.ModelList) == 0 && cfg.HasProvidersConfig() {
+		cfg.ModelList = ConvertProvidersToModelList(cfg)
+	}
+
+	if cfg.HasProvidersConfig() {
+		InheritProviderCredentials(cfg.ModelList, cfg.Providers)
+	}
+
+	if err := cfg.ValidateModelList(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
 func (c *Config) migrateChannelConfigs() {
 	// Discord: mention_only -> group_trigger.mention_only
 	if c.Channels.Discord.MentionOnly && !c.Channels.Discord.GroupTrigger.MentionOnly {

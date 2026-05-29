@@ -313,16 +313,8 @@ func TestAllowedSSHKeyPath_UserHome(t *testing.T) {
 
 // TestAllowedSSHKeyPath_EnvVar tests KHUNQUANT_SSH_KEY_PATH matching.
 func TestAllowedSSHKeyPath_EnvVar(t *testing.T) {
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
 	testPath := "/opt/custom/ssh.key"
-	os.Setenv(SSHKeyPathEnvVar, testPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, testPath)
 
 	if !allowedSSHKeyPath(testPath) {
 		t.Errorf("path matching KHUNQUANT_SSH_KEY_PATH should be allowed: %q", testPath)
@@ -353,18 +345,8 @@ func TestEncrypt_EmptyPassphrase(t *testing.T) {
 // TestEncrypt_NoSSHKey tests that Encrypt fails when SSH key is not found.
 func TestEncrypt_NoSSHKey(t *testing.T) {
 	// Save and clear environment.
-	oldPath, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	oldHome := os.Getenv(khunquantHome)
-	os.Unsetenv(SSHKeyPathEnvVar)
-	os.Unsetenv(khunquantHome)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldPath)
-		}
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, "")
+	t.Setenv(khunquantHome, "")
 
 	// Try to encrypt; pickSSHKeyPath will find no key in default location.
 	_, err := Encrypt("testpass", "", "plaintext")
@@ -389,15 +371,7 @@ func TestEncrypt_WithValidSSHKey(t *testing.T) {
 	}
 
 	// Set KHUNQUANT_SSH_KEY_PATH to allow this path
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	plaintext := "secret-api-key"
 	encrypted, err := Encrypt("testpassphrase", keyPath, plaintext)
@@ -420,15 +394,7 @@ func TestEncrypt_Decrypt_Roundtrip(t *testing.T) {
 	}
 
 	// Set KHUNQUANT_SSH_KEY_PATH to allow this path
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	passphrase := "secure-passphrase"
 	plaintext := "my-secret-credential"
@@ -466,15 +432,7 @@ func TestEncrypt_Decrypt_WrongPassphrase(t *testing.T) {
 	}
 
 	// Set KHUNQUANT_SSH_KEY_PATH to allow this path
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	passphrase := "correct-passphrase"
 	plaintext := "secret"
@@ -523,16 +481,8 @@ func TestDeriveKey_NotAllowedPath(t *testing.T) {
 
 // TestDeriveKey_MissingFile tests deriveKey with a non-existent file.
 func TestDeriveKey_MissingFile(t *testing.T) {
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
 	missingPath := "/tmp/khunquant_nonexistent_" + fmt.Sprintf("%d", os.Getpid())
-	os.Setenv(SSHKeyPathEnvVar, missingPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, missingPath)
 
 	_, err := deriveKey("passphrase", missingPath, []byte("salt"))
 	if err == nil {
@@ -553,15 +503,7 @@ func TestDeriveKey_ValidFile(t *testing.T) {
 	}
 
 	// Set env to allow this path.
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	salt := make([]byte, saltLen)
 	key, err := deriveKey("test-passphrase", keyPath, salt)
@@ -583,15 +525,7 @@ func TestDeriveKey_DifferentPassphrases(t *testing.T) {
 		t.Fatalf("GenerateSSHKey: %v", err)
 	}
 
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	salt := make([]byte, saltLen)
 	key1, err := deriveKey("passphrase1", keyPath, salt)
@@ -620,16 +554,8 @@ func TestPickSSHKeyPath_Explicit(t *testing.T) {
 
 // TestPickSSHKeyPath_EnvVar tests pickSSHKeyPath with environment variable.
 func TestPickSSHKeyPath_EnvVar(t *testing.T) {
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
 	envPath := "/env/var/path"
-	os.Setenv(SSHKeyPathEnvVar, envPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, envPath)
 
 	result := pickSSHKeyPath("")
 	if result != envPath {
@@ -639,15 +565,7 @@ func TestPickSSHKeyPath_EnvVar(t *testing.T) {
 
 // TestPickSSHKeyPath_EmptyEnvVar tests that pickSSHKeyPath respects empty env var.
 func TestPickSSHKeyPath_EmptyEnvVar(t *testing.T) {
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, "")
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, "")
 
 	result := pickSSHKeyPath("")
 	// Empty env var means "respect the setting, even if empty"
@@ -666,15 +584,7 @@ func TestResolveEncrypted_ValidEncryptedString(t *testing.T) {
 	}
 
 	// Set KHUNQUANT_SSH_KEY_PATH to allow this path
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	plaintext := "test-credential"
 	passphrase := "test-pass"
@@ -708,15 +618,7 @@ func TestResolveEncrypted_CorruptedCiphertext(t *testing.T) {
 	}
 
 	// Set KHUNQUANT_SSH_KEY_PATH to allow this path
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	plaintext := "test-credential"
 	passphrase := "test-pass"
@@ -771,15 +673,7 @@ func TestMultipleResolutions_Consistency(t *testing.T) {
 	}
 
 	// Set KHUNQUANT_SSH_KEY_PATH to allow this path
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	plaintext := "consistency-test"
 	passphrase := "consistent-pass"
@@ -820,15 +714,7 @@ func TestEncrypt_EmptyPlaintext(t *testing.T) {
 		t.Fatalf("GenerateSSHKey: %v", err)
 	}
 
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	// Empty plaintext should still encrypt successfully
 	encrypted, err := Encrypt("passphrase", keyPath, "")
@@ -863,15 +749,7 @@ func TestEncrypt_LongPlaintext(t *testing.T) {
 		t.Fatalf("GenerateSSHKey: %v", err)
 	}
 
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	// Create long plaintext
 	longPlaintext := strings.Repeat("secret", 1000)
@@ -937,16 +815,8 @@ func TestResolve_MixedCredentials(t *testing.T) {
 
 // TestAllowedSSHKeyPath_WithKHUNQUANT_HOME tests KHUNQUANT_HOME allowance.
 func TestAllowedSSHKeyPath_WithKHUNQUANT_HOME(t *testing.T) {
-	oldHome := os.Getenv(khunquantHome)
 	customHome := t.TempDir()
-	os.Setenv(khunquantHome, customHome)
-	t.Cleanup(func() {
-		if oldHome != "" {
-			os.Setenv(khunquantHome, oldHome)
-		} else {
-			os.Unsetenv(khunquantHome)
-		}
-	})
+	t.Setenv(khunquantHome, customHome)
 
 	// Path within KHUNQUANT_HOME should be allowed
 	keyPath := filepath.Join(customHome, "keys", "mykey")
@@ -958,7 +828,7 @@ func TestAllowedSSHKeyPath_WithKHUNQUANT_HOME(t *testing.T) {
 // TestPickSSHKeyPath_DefaultBehavior tests default SSH key path discovery.
 func TestPickSSHKeyPath_DefaultBehavior(t *testing.T) {
 	oldPath, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Unsetenv(SSHKeyPathEnvVar)
+	os.Unsetenv(SSHKeyPathEnvVar) //nolint:forbidigo // LookupEnv semantics require truly unset, not empty
 	t.Cleanup(func() {
 		if oldOk {
 			os.Setenv(SSHKeyPathEnvVar, oldPath)
@@ -989,15 +859,7 @@ func TestResolve_EncryptedCredential_WrongSSHKey(t *testing.T) {
 	}
 
 	// Encrypt with key1
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath1)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath1)
 
 	plaintext := "secret-data"
 	passphrase := "test-pass"
@@ -1007,7 +869,7 @@ func TestResolve_EncryptedCredential_WrongSSHKey(t *testing.T) {
 	}
 
 	// Try to decrypt with key2
-	os.Setenv(SSHKeyPathEnvVar, keyPath2)
+	t.Setenv(SSHKeyPathEnvVar, keyPath2)
 	originalProvider := PassphraseProvider
 	PassphraseProvider = func() string { return passphrase }
 	t.Cleanup(func() { PassphraseProvider = originalProvider })
@@ -1031,15 +893,7 @@ func TestDeriveKey_DifferentSalts(t *testing.T) {
 		t.Fatalf("GenerateSSHKey: %v", err)
 	}
 
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	salt1 := make([]byte, saltLen)
 	salt1[0] = 1
@@ -1071,15 +925,7 @@ func TestEncrypt_SpecialCharactersInPlaintext(t *testing.T) {
 		t.Fatalf("GenerateSSHKey: %v", err)
 	}
 
-	oldVal, oldOk := os.LookupEnv(SSHKeyPathEnvVar)
-	os.Setenv(SSHKeyPathEnvVar, keyPath)
-	t.Cleanup(func() {
-		if oldOk {
-			os.Setenv(SSHKeyPathEnvVar, oldVal)
-		} else {
-			os.Unsetenv(SSHKeyPathEnvVar)
-		}
-	})
+	t.Setenv(SSHKeyPathEnvVar, keyPath)
 
 	testCases := []string{
 		"!@#$%^&*()",

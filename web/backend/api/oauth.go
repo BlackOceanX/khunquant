@@ -15,8 +15,11 @@ import (
 	"sync"
 	"time"
 
+	"errors"
+
 	"github.com/cryptoquantumwave/khunquant/pkg/auth"
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
+	"github.com/cryptoquantumwave/khunquant/pkg/credential"
 	"github.com/cryptoquantumwave/khunquant/pkg/providers"
 )
 
@@ -828,7 +831,15 @@ func (h *Handler) persistCredentialAndConfig(provider, authMethod string, cred *
 func (h *Handler) syncProviderAuthMethod(provider, authMethod string) error {
 	cfg, err := oauthLoadConfig(h.configPath)
 	if err != nil {
-		return err
+		if !errors.Is(err, credential.ErrDecryptionFailed) {
+			return err
+		}
+		// Security file can't be decrypted (passphrase mismatch). AuthMethod is
+		// stored in plain JSON, so fall back to a JSON-only load to still update it.
+		cfg, err = config.LoadConfigSkipSecurity(h.configPath)
+		if err != nil {
+			return fmt.Errorf("syncing provider auth config: %w", err)
+		}
 	}
 
 	switch provider {
