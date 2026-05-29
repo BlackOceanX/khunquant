@@ -604,7 +604,8 @@
         "tabs": {
           "general": "通用",
           "snapshot": "资产快照",
-          "dca_snapshot": "DCA 快照"
+          "dca_snapshot": "DCA 快照",
+          "delta_neutral": "Delta-Neutral"
         },
         "snapshot": {
           "empty": "未找到快照。",

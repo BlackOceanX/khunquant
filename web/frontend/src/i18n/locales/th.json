@@ -467,7 +467,8 @@
         "tabs": {
           "general": "ทั่วไป",
           "snapshot": "Assets Snapshot",
-          "dca_snapshot": "DCA Snapshot"
+          "dca_snapshot": "DCA Snapshot",
+          "delta_neutral": "Delta-Neutral"
         },
         "snapshot": {
           "empty": "ไม่พบ snapshot",
