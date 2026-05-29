@@ -243,6 +243,114 @@ OKX:     Status WATCH — funding near zero.
 Recommendation: Skip for now. Carry risk outweighs benefits.
 ```
 
+## Bulk Opportunity Scan (`scan_delta_neutral_opportunities`)
+
+When you ask to scan **many pairs at once**—e.g. "scan arbitrage opportunities on the top 300 pairs", "find the best funding plays", "what's the highest funding right now"—use this tool instead of the per-symbol workflow. It executes a **two-stage batch screen** that ranks hundreds of candidates efficiently.
+
+### When To Use
+
+- **Broad market screen**: You want to discover the top N funding opportunities across 100–500 coins without deep analysis on each.
+- **Fast initial ranking**: Stage 1 fetches all funding rates in one batch call (cheap even for 300 symbols).
+- **Stability validation (optional)**: Stage 2 adds 7d/14d funding statistics for only the top K, skipping API calls on low-ranking opportunities.
+
+This is a **funding-only screen**. After it returns the ranked shortlist, **drill down on the top picks** with per-symbol tools (`get_orderbook` for liquidity, `futures_risk_summary` for margin health) before committing capital.
+
+### How It Works
+
+**Stage 1: Rank all candidates by annualized funding APR.**
+
+1. Fetch the top N crypto assets by market-cap rank from CoinMarketCap (default: top 100, cap 500).
+2. For each asset, build a perpetual futures symbol (e.g., `BTC/USDT:USDT` for Binance).
+3. Batch-fetch current funding rates for all candidates using `FetchFuturesFundingRates` (one API call).
+4. Compute annualized APR: `APR = funding_rate × periods_per_day × 365 × 100` (percent).
+5. **Filter and sort**:
+   - Exclude assets with no perp on the chosen exchange.
+   - Exclude assets below `min_abs_funding_apr` threshold (if set).
+   - Sort by absolute APR descending (highest funding opportunities first).
+
+**Stage 2 (optional): Add stability statistics for top K.**
+
+When `include_stability=true` (default), fetch 7d and 14d funding history for only the top K ranked assets:
+- Compute 7-day mean + standard deviation.
+- Compute 14-day mean + standard deviation.
+- Use this data to label opportunities: **attractive** (positive + stable), **watch** (near-zero or volatile), or **blocked** (no data).
+
+### Funding Direction
+
+The tool identifies both directions:
+- **Positive funding** (e.g., +0.01% per 8h): Longs pay shorts. You go **spot-long + short-perp** to earn funding.
+- **Negative funding** (e.g., −0.003% per 8h): Shorts pay longs. You go **long-perp + spot-short** (inverse strategy) to earn funding.
+
+Each opportunity is labeled with its direction: **"short perp"** (positive funding, your short perp receives funding) or **"long perp"** (negative funding, your long perp receives funding).
+
+### Parameters
+
+```json
+{
+  "provider": "binance",
+  "account": "",
+  "top_n": 100,
+  "quote": "USDT",
+  "limit_results": 20,
+  "include_stability": true,
+  "top_k_stability": 15,
+  "min_abs_funding_apr": 0,
+  "cmc_base_url": ""
+}
+```
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `provider` | string | ✓ | — | Exchange: `"binance"` or `"okx"` |
+| `account` | string | | "" | Account name (empty = default account) |
+| `top_n` | integer | | 100 | Top N coins by market cap to screen (max 500) |
+| `quote` | string | | "USDT" | Quote currency for futures symbols |
+| `limit_results` | integer | | 20 | Limit output table rows to top N |
+| `include_stability` | boolean | | true | Fetch 7d/14d stats for top K (Stage 2) |
+| `top_k_stability` | integer | | 15 | Stage 2: fetch history for top K ranked assets |
+| `min_abs_funding_apr` | number | | 0 | Filter: exclude \|APR\| below this % (optional) |
+| `cmc_base_url` | string | | CoinMarketCap API | Override CMC endpoint (testing/custom) |
+
+### Example: Scan Top 300 Pairs on Binance
+
+```json
+{
+  "provider": "binance",
+  "top_n": 300,
+  "include_stability": true,
+  "limit_results": 30
+}
+```
+
+This fetches top 300 coins by CMC market cap, ranks them by APR on Binance perpetuals, and returns the top 30 in the output table.
+
+### Sample Output
+
+```
+=== Delta-Neutral Funding Carry Scan ===
+
+Rank Asset Futures         Funding%   APR%   Direction   7d Mean%   7d Std%   14d Mean%  14d Std%   Label
+———————————————————————————————————————————————————————————————————————————————————————————————————————————————
+1    ETH   ETH/USDT:USDT   0.008500   26.22   short perp  +0.0082    0.0015    +0.0078    0.0014    attractive
+2    BTC   BTC/USDT:USDT   0.006200   22.77   short perp  +0.0061    0.0010    +0.0059    0.0012    attractive
+3    SOL   SOL/USDT:USDT   0.005100   18.67   short perp  +0.0048    0.0025    +0.0050    0.0028    watch
+4    AVAX  AVAX/USDT:USDT  -0.000200  -0.73  long perp   -0.0002    0.0008    -0.0001    0.0006    blocked
+...
+
+Note: Funding-only screen — drill into top picks with get_orderbook/futures_risk_summary before building a plan.
+Legend: 'attractive' = positive carry + stable | 'watch' = near-zero/unstable | 'blocked' = no perp or no funding
+```
+
+### After The Scan: Drill Down Before Opening
+
+A high funding APR alone does not guarantee a good trade. Before creating a plan with `create_delta_neutral_plan`:
+
+1. **Check liquidity** for the top picks: Call `get_orderbook` on both spot and perpetual. Verify spreads are tight (< 0.5%) and orderbook depth is sufficient for your planned capital.
+2. **Check margin health**: Call `futures_risk_summary` to estimate liquidation distance with your target leverage. Ensure liquidation buffer ≥ 25%.
+3. **Check stable funding**: If `include_stability` was false, call `funding_rate_history` manually for the top picks to confirm recent trend (not flipping negative).
+4. **Estimate total costs**: Use the per-symbol workflow (Steps 1–5 in Opportunity Scanning) to compute round-trip costs, net carry, and breakeven days.
+5. **Select and confirm**: Only then create a plan via `create_delta_neutral_plan` with your chosen spot and futures portfolios.
+
 ## Funding Analysis (§7.2)
 
 The funding interpretation labels guide you toward safe opportunities:
