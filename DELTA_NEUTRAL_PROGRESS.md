@@ -50,8 +50,8 @@ The PRD was slightly off; the real codebase uses the **full DCA tool-wiring patt
 
 | Task | Description | Files | Status | Reviewer notes | Commit |
 |------|-------------|-------|--------|----------------|--------|
-| T2.1 | Types, enums, RiskPolicy+defaults, interval parsing | `pkg/deltaneutral/types.go`, `interval.go`, `interval_test.go` | ✅ | Independently verified (sandbox-disabled shell): files on disk, `go build`/`go vet` clean, **50 tests pass**, `gofmt -l` empty. Types match §10/§9.4; DefaultRiskPolicy defaults correct; EvaluationInput has Available flags + RecentRates. (Note: a sandboxed-shell cwd race briefly reported the dir missing — false alarm, corrected.) | _next_ |
-| T2.2 | SQLite store: 5 tables + indexes + CRUD | `pkg/deltaneutral/store.go`, `store_test.go` | ⬜ | | |
+| T2.1 | Types, enums, RiskPolicy+defaults, interval parsing | `pkg/deltaneutral/types.go`, `interval.go`, `interval_test.go` | ✅ | Independently verified (sandbox-disabled shell): files on disk, `go build`/`go vet` clean, **50 tests pass**, `gofmt -l` empty. Types match §10/§9.4; DefaultRiskPolicy defaults correct; EvaluationInput has Available flags + RecentRates. (Note: a sandboxed-shell cwd race briefly reported the dir missing — false alarm, corrected.) | `8d2bb841` |
+| T2.2 | SQLite store: 5 tables + indexes + CRUD | `pkg/deltaneutral/store.go`, `store_test.go` | ✅ | Independently verified: 5 tables per §9.4, all PRAGMAs (WAL/NORMAL/FK/cache), 4 CASCADE + 1 SET NULL, db path `{ws}/memory/delta_neutral/delta_neutral.db`; cascade + filter tests pass; 15 tests pass; build/vet/fmt clean. | _next_ |
 | T2.3 | Deterministic health evaluator `Evaluate()` | `pkg/deltaneutral/health.go`, `health_test.go` | ⬜ | | |
 | T2.4 | 7 plan/summary/history tools + full wiring | `pkg/tools/delta_neutral_*.go`, `names.go`, `config.go`, `defaults.go`, `web/backend/api/tools.go` | ⬜ | | |
 | T2.5 | Execution state-machine model (pure) | `pkg/deltaneutral/execution.go`, `execution_test.go` | ⬜ | | |
