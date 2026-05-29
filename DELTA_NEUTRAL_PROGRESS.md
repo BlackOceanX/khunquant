@@ -46,7 +46,7 @@ The PRD was slightly off; the real codebase uses the **full DCA tool-wiring patt
 | T1.1 | Delta-neutral skill | `workspace/skills/delta-neutral/SKILL.md` | ✅ | Verified on disk + committed. Frontmatter valid; all referenced tools exist in names.go; covers §5/§7.1-7.5/§16. (Caught & fixed: sub-agent first wrote to repo-root path.) | `feff8181` |
 | T1.2 | Extend funding-rate skill | `workspace/skills/funding-rate-analysis/SKILL.md` | ✅ | Verified on disk: original sections preserved + 4 new sections (positive-funding ratio, reversal detection, Binance/OKX compare, annualized caveat). Verified committed. | `b0bc8e1d` |
 
-## Phase 2 — Store, types, health evaluator, tools, monitor gate — ⬜ NOT STARTED
+## Phase 2 — Store, types, health evaluator, tools, monitor gate — ✅ COMPLETE (backend works end-to-end via agent)
 
 | Task | Description | Files | Status | Reviewer notes | Commit |
 |------|-------------|-------|--------|----------------|--------|
@@ -55,13 +55,13 @@ The PRD was slightly off; the real codebase uses the **full DCA tool-wiring patt
 | T2.3 | Deterministic health evaluator `Evaluate()` | `pkg/deltaneutral/health.go`, `health_test.go` | ✅ | Independently verified: §11 formulas exact (delta-drift abs/max; liq-distance mark==0 & liq==0 guards); 9 breach codes; data-failure-first honoring EscalateOnDataFailure; cross-exchange penalty w/o auto-breach; 6-component score; pure fn; 27 pkg tests pass; build/vet/fmt clean. | `4d0e4d62` |
 | T2.4 | 7 plan/summary/history tools + config/metadata wiring (NOT helpers.go — that's T2.6) | `pkg/tools/delta_neutral_*.go`, `names.go`, `config.go`, `defaults.go`, `web/backend/api/tools.go` | ✅ | **Independently verified after shell recovered:** `go build ./...` exit 0; 10 DeltaNeutral tool tests pass; deltaneutral pkg still green; 7 new DN files gofmt-clean; helpers.go has 0 DeltaNeutral refs (correctly untouched). Read create_plan.go + names.go: wiring appended after DCA blocks, spot-only futures (bitkub/binanceth) rejected, cross-exchange flag set, `dn:<id>:<name>` scheduled via Kind:"every". Style-only lint (EqualFold/Fprintf/Sprintf) logged for cleanup. | `618c88bb` |
 | T2.5 | Execution state-machine model (pure) | `pkg/deltaneutral/execution.go`, `execution_test.go` | ✅ | Independently verified: 14 ExecutionState + 9 LegState + 2 LegType per §7.9; CanTransition/AllowedTransitions/IsTerminal; FirstLegType returns spot when spotLessLiquid (TestFirstLegType passes — confirmed directly after a stale-grep false alarm); no clash with store.go Execution/ExecutionLeg row structs; 33 pkg tests pass; build/vet/fmt clean. Done out of order (pure/independent) before T2.4. | `c33f30b3` |
-| T2.6 | Cron monitor handler + gateway wiring | `cmd/khunquant/internal/gateway/delta_neutral_handler.go`, `helpers.go` | ✅ | **Independently verified:** `go build ./...` exit 0; vet clean; gofmt clean; DN tests 17 pass; gateway pkg tests pass. Read handler: SaveSnapshot always (204); on breach SaveAlert(250)→PublishOutbound(263) BEFORE `cronTool != nil`(280) — **alert fires even when cronTool nil** ✓; data-unavailable flows through as a breach (never silent). helpers.go: DN store init 661-666, `dn:` dispatch 681-682, 7 tools registered gated by `dnEnabled && dnStore != nil` 738-758. | _next_ |
+| T2.6 | Cron monitor handler + gateway wiring | `cmd/khunquant/internal/gateway/delta_neutral_handler.go`, `helpers.go` | ✅ | **Independently verified:** `go build ./...` exit 0; vet clean; gofmt clean; DN tests 17 pass; gateway pkg tests pass. Read handler: SaveSnapshot always (204); on breach SaveAlert(250)→PublishOutbound(263) BEFORE `cronTool != nil`(280) — **alert fires even when cronTool nil** ✓; data-unavailable flows through as a breach (never silent). helpers.go: DN store init 661-666, `dn:` dispatch 681-682, 7 tools registered gated by `dnEnabled && dnStore != nil` 738-758. | `e69d87fe` |
 
 ## Phase 3 — REST + Web UI — ⬜ NOT STARTED
 
 | Task | Description | Files | Status | Reviewer notes | Commit |
 |------|-------------|-------|--------|----------------|--------|
-| T3.1 | REST endpoints (5) + router + handler store wiring + tests | `web/backend/api/agent_delta_neutral.go`, `router.go` | ⬜ | | |
+| T3.1 | REST endpoints (5) + router + handler store wiring + tests | `web/backend/api/agent_delta_neutral.go`, `router.go` | ✅ | **Independently verified:** build exit 0; 8 DN API tests pass; 5 routes registered (126-130) + router hook (81); gofmt clean; **security: 91 explicit json DTO fields, zero secret/key/token fields** (grep confirmed). Per-request store open+defer Close, mirrors DCA. | _next_ |
 | T3.2 | Frontend API module | `web/frontend/src/api/agent-delta-neutral.ts` | ⬜ | | |
 | T3.3 | Delta-Neutral panel + tab + i18n | `web/frontend/src/components/agent-memory/delta-neutral-panel.tsx`, `agent-memory-page.tsx`, `i18n/locales/*.json` | ⬜ | | |
 
