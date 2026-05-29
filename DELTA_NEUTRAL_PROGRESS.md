@@ -91,6 +91,11 @@ The PRD was slightly off; the real codebase uses the **full DCA tool-wiring patt
 
 **Remaining (7 tasks, NOT started):** T2.4 (tools + shared-file wiring), T2.6 (gateway monitor), T3.1–T3.3 (REST + Web UI), T4.1–T4.2 (execution tools + integration). These touch shared files (`names.go`, `config.go`, `defaults.go`, `tools.go`, `helpers.go`, `router.go`) — do them strictly sequentially with a clean shell.
 
+## Review follow-ups (non-blocking, address during T2.4+ or a cleanup pass)
+- `health.go computeHealthScore`: params `liquidationDistancePct`, `marginRatioPct`, `policy`, `fundingRate` are unused (score is driven by the already-classified `fundingState`/`marginState`). Not a correctness bug — redundant signature. Trim the signature.
+- Lint hints across the package: `slices.Contains` simplifications, `range`-over-int loops, one tagged-switch (QF1003), an `unusedparams t` in `store_test.go`. All style-only; `go vet` is clean. Run `make lint`/`make fix` in a cleanup pass.
+- `store.UpdatePlanStatus` takes `status string` per the sub-agent report — confirm it accepts `PlanStatus` (or cast at call sites) when wiring T2.4 tools.
+
 ## Resume instructions (next session)
 1. `git log feat/delta-neutral --oneline` — confirm the 6 task commits are present; rebuild `go build ./... && go test ./pkg/deltaneutral/`.
 2. Start **T2.4** (the 7 plan/summary/history tools + full DCA-pattern wiring across names.go/config.go/defaults.go/tools.go — see the "Corrected wiring" section above; replicate ALL 5 wiring points). After each shared-file edit, run `make build` before proceeding.
