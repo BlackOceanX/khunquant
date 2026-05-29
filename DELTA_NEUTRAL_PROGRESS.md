@@ -65,12 +65,12 @@ The PRD was slightly off; the real codebase uses the **full DCA tool-wiring patt
 | T3.2 | Frontend API module | `web/frontend/src/api/agent-delta-neutral.ts` | ✅ | **Independently verified:** `pnpm build:backend` (tsc -b && vite build) succeeds, 0 TS errors; TS interfaces match Go json tags (spot-checked health_score/cross_exchange/data_status/etc). | `6c861f23` |
 | T3.3 | Delta-Neutral panel + tab + i18n | `web/frontend/src/components/agent-memory/delta-neutral-panel.tsx`, `agent-memory-page.tsx`, `i18n/locales/*.json` | ✅ | **Independently verified:** build green; tab wired (import 38, TabsTrigger 213, TabsContent 357); i18n key present+valid in en/zh/th; panel has health/cross-exchange/data-unavailable/agent-invoked badges. (No byte-size display — memory-size API has no dn field, intentionally omitted.) Frontend has no vitest; tsc build is the gate (matches DCA panel verification). | `6c861f23` |
 
-## Phase 4 — Approval-mode execution (last)
+## Phase 4 — Approval-mode execution (last) — ✅ COMPLETE
 
 | Task | Description | Files | Status | Reviewer notes | Commit |
 |------|-------------|-------|--------|----------------|--------|
-| T4.1 | `open_`/`unwind_delta_neutral_position` tools + state machine + recovery + wiring | `pkg/tools/delta_neutral_open.go`, `delta_neutral_unwind.go` (+ wiring) | ✅ | **Independently verified:** build exit 0; full pkg/tools compiles (1342 tests pass — a transient DuplicateDecl `contains` lint flag was FALSE, only one decl exists); 15 DN tests pass. Safety confirmed by reading code: both tools default `Enabled:false` (defaults.go 648-653); dry-run `confirm` gate; 5 gates (CheckLeverage/CheckPermission×2 legs/CheckDailyLoss/DefaultLimiter×2); 2nd-leg-fail→`recovery_required` + CRITICAL unhedged warning recommending unwind (open.go 210-231); 1st-leg-fail aborts 2nd. Style-only Sprintf lint logged. | _next_ |
-| T4.2 | Integration tests (paper) | `pkg/deltaneutral/*_integration_test.go` | ⬜ | | |
+| T4.1 | `open_`/`unwind_delta_neutral_position` tools + state machine + recovery + wiring | `pkg/tools/delta_neutral_open.go`, `delta_neutral_unwind.go` (+ wiring) | ✅ | **Independently verified:** build exit 0; full pkg/tools compiles (1342 tests pass — a transient DuplicateDecl `contains` lint flag was FALSE, only one decl exists); 15 DN tests pass. Safety confirmed by reading code: both tools default `Enabled:false` (defaults.go 648-653); dry-run `confirm` gate; 5 gates (CheckLeverage/CheckPermission×2 legs/CheckDailyLoss/DefaultLimiter×2); 2nd-leg-fail→`recovery_required` + CRITICAL unhedged warning recommending unwind (open.go 210-231); 1st-leg-fail aborts 2nd. Style-only Sprintf lint logged. | `87ff425e` |
+| T4.2 | Integration tests (paper) | `pkg/deltaneutral/integration_test.go` | ✅ | **Independently verified:** 5 TestIntegration funcs (8 subtests) pass — plan→snapshot, forced breach→alert, data-unavailable escalation, exec success path, one-leg-fail→recovery (+illegal transition rejected). Reuses existing helpers (no redecl). **Final end-to-end gate: `go build ./...` clean, `go vet ./...` clean, `go test ./...` = 5178 pass / 98 pkgs.** (`make check` only blocked by missing golangci-lint binary — env gap, not code.) | _next_ |
 
 ---
 
@@ -91,7 +91,23 @@ The PRD was slightly off; the real codebase uses the **full DCA tool-wiring patt
 
 **Remaining (7 tasks, NOT started):** T2.4 (tools + shared-file wiring), T2.6 (gateway monitor), T3.1–T3.3 (REST + Web UI), T4.1–T4.2 (execution tools + integration). These touch shared files (`names.go`, `config.go`, `defaults.go`, `tools.go`, `helpers.go`, `router.go`) — do them strictly sequentially with a clean shell.
 
-## Review follow-ups (non-blocking, address during T2.4+ or a cleanup pass)
+## 🎉 ALL 13 TASKS COMPLETE (2026-05-29)
+
+Every phase done and independently verified by the reviewer (not sub-agent self-reports). Feature lives entirely on `feat/delta-neutral`; `main` untouched. **Final gate: `go build ./...` clean · `go vet ./...` clean · `go test ./...` = 5178 pass / 98 packages · frontend `tsc -b && vite build` clean.**
+
+What shipped (PRD §22 MVP definition — all met):
+- Phase 1: `delta-neutral` skill + extended `funding-rate-analysis` skill.
+- Phase 2: `pkg/deltaneutral` (types, 5-table SQLite store, deterministic health `Evaluate`, 7 plan/CRUD/summary/history tools, two-leg execution state machine) + gateway cron monitor handler with deterministic gate (LLM only on breach; data-failure alerts fire even without cronTool).
+- Phase 3: 5 REST endpoints (no secrets in DTOs) + React Delta-Neutral panel/tab (en/zh/th).
+- Phase 4: approval-mode `open`/`unwind` execution tools (default DISABLED, dry-run unless confirm, full safety gates, first-leg-fail aborts, second-leg-fail→recovery_required) + integration tests.
+
+### Suggested merge / next steps (NOT done — await user)
+1. Optional cleanup pass: run `make fix` / `golangci-lint` (needs the binary installed) to clear the style-only lint (slices.Contains, fmt.Fprintf, EqualFold, unnecessary Sprintf) listed below.
+2. Trim the unused `computeHealthScore` params (below).
+3. Open a PR from `feat/delta-neutral` → `main` when ready (not done — user controls merge).
+4. To exercise live: enable `open_/unwind_delta_neutral_position` in tools config + set `trading_risk.allow_leverage=true`; test first in `paper_trading_mode`.
+
+## Review follow-ups (non-blocking, address during a cleanup pass)
 - `health.go computeHealthScore`: params `liquidationDistancePct`, `marginRatioPct`, `policy`, `fundingRate` are unused (score is driven by the already-classified `fundingState`/`marginState`). Not a correctness bug — redundant signature. Trim the signature.
 - Lint hints across the package: `slices.Contains` simplifications, `range`-over-int loops, one tagged-switch (QF1003), an `unusedparams t` in `store_test.go`. All style-only; `go vet` is clean. Run `make lint`/`make fix` in a cleanup pass.
 - `store.UpdatePlanStatus` takes `status string` per the sub-agent report — confirm it accepts `PlanStatus` (or cast at call sites) when wiring T2.4 tools.
