@@ -345,13 +345,13 @@ Omitting `provider` (or passing `"all"`) scans **every** supported exchange (cur
 Exchanges scanned: binance, okx
 Sorted by: combined_apy desc
 
-Rank  Exch    Asset Futures         Spot     Funding%   APR%   Earn%   Combined%  Direction   7d Mean%   7d Std%   Label
+Rank  Exch    Asset Futures         Spot     Funding%   APR%   Direction   7d Mean%   7d Std%  14d Mean%  14d Std%     Earn%  Combined% Label
 —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
-1     okx     ETH   ETH/USDT:USDT   yes      0.008500   26.22  3.5000  29.72      short perp  +0.0082    0.0015    attractive
-2     binance BTC   BTC/USDT:USDT   yes      0.006200   22.77  2.0000  24.77      short perp  +0.0061    0.0010    attractive
-3     binance SOL   SOL/USDT:USDT   yes      0.005100   18.67  4.5000  23.17      short perp  +0.0048    0.0025    watch
-4     binance XYZ   XYZ/USDT:USDT   NO-SPOT  0.005400   19.71  -       19.71      short perp  +0.0050    0.0030    watch
-5     okx     ADA   ADA/USDT:USDT   yes      0.003200   11.72  -       11.72      short perp  +0.0031    0.0020    watch
+1     okx     ETH   ETH/USDT:USDT   yes      0.008500   26.22  short perp  +0.0082    0.0015    +0.0078    0.0014   +3.5000     +29.72 attractive
+2     binance BTC   BTC/USDT:USDT   yes      0.006200   22.77  short perp  +0.0061    0.0010    +0.0059    0.0012   +2.0000     +24.77 attractive
+3     binance SOL   SOL/USDT:USDT   yes      0.005100   18.67  short perp  +0.0048    0.0025    +0.0050    0.0028   +4.5000     +23.17 watch
+4     binance XYZ   XYZ/USDT:USDT   NO-SPOT  0.005400   19.71  short perp  +0.0050    0.0030    +0.0052    0.0031        -      +19.71 watch
+5     okx     ADA   ADA/USDT:USDT   yes      0.003200   11.72  short perp  +0.0031    0.0020    +0.0030    0.0021        -      +11.72 watch
 ...
 
 ⚠️  No spot pair on its exchange for: XYZ — funding rank is still valid, but the delta-neutral spot leg cannot be opened there (source spot elsewhere, or treat as futures-only).
