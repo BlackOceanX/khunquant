@@ -159,6 +159,48 @@ type FuturesProvider interface {
 	CancelAllFuturesOrders(ctx context.Context, symbol string) ([]ccxt.Order, error)
 }
 
+// EarnProduct describes a flexible savings/earn product offered for an asset.
+// APY is a fraction (0.05 == 5%).
+type EarnProduct struct {
+	Exchange      string
+	Asset         string
+	ProductID     string
+	APY           float64
+	CanSubscribe  bool
+	AutoSubscribe bool
+	MinSubscribe  float64
+}
+
+// EarnPosition describes a currently held flexible earn position.
+// APY is a fraction (0.05 == 5%).
+type EarnPosition struct {
+	Exchange      string
+	Asset         string
+	ProductID     string
+	Amount        float64
+	APY           float64
+	AutoSubscribe bool
+}
+
+// EarnProvider is implemented by providers that expose flexible savings/earn
+// products for the spot leg of a delta-neutral position. All methods require
+// authenticated credentials except where the underlying APY endpoint is public.
+type EarnProvider interface {
+	Provider
+	// FetchFlexibleEarnProducts returns flexible earn products. asset == "" returns all.
+	FetchFlexibleEarnProducts(ctx context.Context, asset string) ([]EarnProduct, error)
+	// FetchFlexibleEarnPositions returns currently held flexible earn positions.
+	FetchFlexibleEarnPositions(ctx context.Context) ([]EarnPosition, error)
+	// SubscribeFlexibleEarn moves amount of asset into the given flexible product.
+	// Returns an exchange transaction/purchase id.
+	SubscribeFlexibleEarn(ctx context.Context, productID, asset string, amount float64, autoSubscribe bool) (string, error)
+	// RedeemFlexibleEarn redeems amount (or all) of asset from the flexible product.
+	// Returns an exchange transaction/redemption id.
+	RedeemFlexibleEarn(ctx context.Context, productID, asset string, amount float64, redeemAll bool) (string, error)
+	// SetFlexibleAutoSubscribe enables/disables auto-subscribe for the product/asset.
+	SetFlexibleAutoSubscribe(ctx context.Context, productID, asset string, enable bool) error
+}
+
 // Balance mirrors pkg/exchanges.Balance so callers don't need to import both.
 type Balance struct {
 	Asset  string
