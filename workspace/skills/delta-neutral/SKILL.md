@@ -306,8 +306,11 @@ Each opportunity is labeled with its direction: **"short perp"** (positive fundi
 | `top_n` | integer | | 100 | Top N coins by market cap to screen (max 500) |
 | `quote` | string | | "USDT" | Quote currency for futures symbols |
 | `limit_results` | integer | | 20 | Limit output table rows to top N |
-| `include_stability` | boolean | | true | Fetch 7d/14d stats for top K (Stage 2) |
-| `top_k_stability` | integer | | 15 | Stage 2: fetch history for top K ranked assets |
+| `include_stability` | boolean | | true | Fetch 7d/14d funding stats for top K (Stage 2) |
+| `include_earn` | boolean | | true | Fetch flexible spot-earn APY and show Earn%/Combined% columns (Stage 1.5). Earn data is account-scoped on Binance and public on OKX; rows without earn show '-'. |
+| `top_k_stability` | integer | | 15 | Stage 2: fetch funding history for top K ranked assets |
+| `sort_by` | string | | "funding_rate" | Field to sort by: `funding_rate`, `apr`, `7d_avg`, `14d_avg`, or `combined_apy`. Sorting by `7d_avg`/`14d_avg` requires computing stability for all candidates (more API calls). |
+| `sort_order` | string | | "desc" | Sort direction: `asc` (most-negative first) or `desc` (most-positive first) |
 | `min_abs_funding_apr` | number | | 0 | Filter: exclude \|APR\| below this % (optional) |
 | `cmc_base_url` | string | | CoinMarketCap API | Override CMC endpoint (testing/custom) |
 
@@ -340,20 +343,23 @@ Omitting `provider` (or passing `"all"`) scans **every** supported exchange (cur
 ```
 === Delta-Neutral Funding Carry Scan ===
 Exchanges scanned: binance, okx
-Sorted by: funding_rate desc
+Sorted by: combined_apy desc
 
-Rank  Exch    Asset Futures         Spot     Funding%   APR%   Direction   7d Mean%   7d Std%   14d Mean%  14d Std%   Label
-———————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
-1     okx     ETH   ETH/USDT:USDT   yes      0.008500   26.22   short perp  +0.0082    0.0015    +0.0078    0.0014    attractive
-2     binance BTC   BTC/USDT:USDT   yes      0.006200   22.77   short perp  +0.0061    0.0010    +0.0059    0.0012    attractive
-3     binance XYZ   XYZ/USDT:USDT   NO-SPOT  0.005400   19.71   short perp  +0.0050    0.0030    +0.0052    0.0031    watch
-4     okx     SOL   SOL/USDT:USDT   yes      0.005100   18.67   short perp  +0.0048    0.0025    +0.0050    0.0028    watch
+Rank  Exch    Asset Futures         Spot     Funding%   APR%   Earn%   Combined%  Direction   7d Mean%   7d Std%   Label
+—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+1     okx     ETH   ETH/USDT:USDT   yes      0.008500   26.22  3.5000  29.72      short perp  +0.0082    0.0015    attractive
+2     binance BTC   BTC/USDT:USDT   yes      0.006200   22.77  2.0000  24.77      short perp  +0.0061    0.0010    attractive
+3     binance SOL   SOL/USDT:USDT   yes      0.005100   18.67  4.5000  23.17      short perp  +0.0048    0.0025    watch
+4     binance XYZ   XYZ/USDT:USDT   NO-SPOT  0.005400   19.71  -       19.71      short perp  +0.0050    0.0030    watch
+5     okx     ADA   ADA/USDT:USDT   yes      0.003200   11.72  -       11.72      short perp  +0.0031    0.0020    watch
 ...
 
 ⚠️  No spot pair on its exchange for: XYZ — funding rank is still valid, but the delta-neutral spot leg cannot be opened there (source spot elsewhere, or treat as futures-only).
 Spot column: 'yes' = spot pair available | 'no-spot' = perp only on that exchange | 'unknown' = could not verify.
-Note: Funding-only screen — drill into top picks with get_orderbook/futures_risk_summary before building a plan.
-Legend: 'attractive' = positive carry + stable | 'watch' = near-zero/unstable/no-spot | 'blocked' = no perp or no funding
+Earn% column: '-' = no earn product available | percentage = flexible-savings APY (tiered; varies by deposit amount).
+Combined% = Funding APR + Earn APY (your total annualized yield if holding both legs).
+Note: Funding+earn screen — drill into top picks with get_orderbook/futures_risk_summary before building a plan.
+Legend: 'attractive' = positive funding + stable | 'watch' = near-zero/unstable | 'blocked' = no perp or no funding
 ```
 
 The **Exch** column shows which exchange each row came from (when scanning a single exchange it's constant). The **Spot** column flags whether the asset also has a spot pair on that exchange. Assets with a perp but **no spot** are **kept** in the ranked list (so you still see correct sorted funding data) and marked `NO-SPOT` — their funding rank is real, but the delta-neutral spot leg can't be opened on that exchange (source the spot elsewhere, or treat as futures-only). `unknown` means spot markets couldn't be verified.
@@ -367,6 +373,34 @@ A high funding APR alone does not guarantee a good trade. Before creating a plan
 3. **Check stable funding**: If `include_stability` was false, call `funding_rate_history` manually for the top picks to confirm recent trend (not flipping negative).
 4. **Estimate total costs**: Use the per-symbol workflow (Steps 1–5 in Opportunity Scanning) to compute round-trip costs, net carry, and breakeven days.
 5. **Select and confirm**: Only then create a plan via `create_delta_neutral_plan` with your chosen spot and futures portfolios.
+
+## Earning the Spot Leg (§7.1.5)
+
+The spot-long leg of a delta-neutral strategy can earn additional yield from flexible-savings products offered by the exchange, **on top of the funding APR from the futures short leg**. This earn APY compounds the total return, though it is **variable, tiered, and not guaranteed**.
+
+### How It Works
+
+- **Binance**: The spot leg can be enrolled in a flexible savings product (e.g., BTC Flexible Savings). Funds are swept daily (at 02:00 UTC and 16:00 UTC) into the product and earn APY. **Auto-subscribe is configurable via API** using `set_auto_subscribe`; once enabled, new deposits are swept automatically.
+- **OKX**: Flexible earn sweeps are pulled from the **Funding account** (not Spot directly). Use `Transfer` to move funds from Trading → Funding first, then subscribe. OKX's **auto-subscribe toggle is app-only** (no API method); you must configure it in the OKX mobile app or web console.
+
+### Key Rules
+
+- **Redeem before selling**: If unwinding a position, **redeem the spot leg from earn FIRST**, then sell the underlying. Failing to redeem means your spot holdings remain locked in earn while the futures short is already closed, leaving you with unhedged long exposure and ongoing fund locks.
+- **APY is tiered by amount**: Higher deposited amounts typically earn higher APY. The tool shows the **product-level APY** when available; your actual APY depends on which tier your deposit amount falls into.
+- **Rewards compound**: Earned rewards are automatically reinvested (auto-compound on most products), so your balance grows faster than the stated APY.
+
+### Scanner Integration
+
+When you scan opportunities with `include_earn=true` (default), the scanner fetches flexible-earn APY for each asset and shows:
+
+- **Earn% column**: APY of the flexible-earn product for that asset on that exchange (e.g., 3.5%). Shows "-" if no product is available.
+- **Combined% column**: Funding APR + Earn APY (e.g., 5.2% funding + 3.5% earn = 8.7% combined). This is the total annualized yield if you hold both legs.
+- **combined_apy sort field**: Sort opportunities by `combined_apy` (desc by default) to rank by total return, not funding alone. This often changes which opportunities rank at the top.
+
+### Tools
+
+- `earn_overview` (read): Fetch and display all available products and your current positions. Degrades gracefully if positions require API keys you don't have.
+- `manage_earn_position` (write, confirm-gated): Subscribe, redeem, or toggle auto-subscribe for an earn product. Dry-run with `confirm=false`; execute with `confirm=true`.
 
 ## Funding Analysis (§7.2)
 
@@ -694,6 +728,11 @@ This skill uses the following existing tools. Note that **dedicated delta-neutra
 - `get_total_value` — Estimate total portfolio value in a quote currency by fetching all balances and live prices.
 - `get_pnl_summary` — Compute plan-level PnL if the delta-neutral plan storage is available; otherwise, use generic account PnL.
 - `take_snapshot` — Capture portfolio snapshot for historical tracking.
+
+### Flexible Earn (Optional Spot-Leg Yield)
+
+- `earn_overview` — Fetch and display available flexible-savings products and your current positions across one or more exchanges. Degrades gracefully if position data requires API keys. Read-only, no confirm gate.
+- `manage_earn_position` — Subscribe, redeem, or toggle auto-subscribe for a flexible-earn product. Write tool; confirm-gated (dry-run with `confirm=false`; execute with `confirm=true`). Supports `provider` (single exchange, no "all"), `account`, `action` (subscribe|redeem|set_auto_subscribe), `asset`, and optional `amount`, `redeem_all`, `auto_subscribe`.
 
 ### Execution (Once Available)
 
