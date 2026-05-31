@@ -186,12 +186,12 @@ func TestEarnOverview_HappyPath(t *testing.T) {
 	output := res.ForUser
 
 	// Check products table is present.
-	if !strings.Contains(output, "Flexible Earn Products") {
+	if !strings.Contains(output, "Earn Products") {
 		t.Fatalf("expected products table:\n%s", output)
 	}
 
 	// Check positions table is present.
-	if !strings.Contains(output, "Flexible Earn Positions") {
+	if !strings.Contains(output, "Earn Positions") {
 		t.Fatalf("expected positions table:\n%s", output)
 	}
 
@@ -235,7 +235,7 @@ func TestEarnOverview_PositionsError(t *testing.T) {
 	output := res.ForUser
 
 	// Check products table is still present.
-	if !strings.Contains(output, "Flexible Earn Products") {
+	if !strings.Contains(output, "Earn Products") {
 		t.Fatalf("expected products table:\n%s", output)
 	}
 

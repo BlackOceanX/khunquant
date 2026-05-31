@@ -69,12 +69,16 @@ func okxData(res interface{}) []map[string]interface{} {
 
 // --- broker.EarnProvider ---
 
-// FetchFlexibleEarnProducts returns OKX flexible savings products (one per ccy).
-// The APY endpoint is public, so this works without credentials. asset == ""
-// returns all currencies. APY is normalized to a fraction (estRate is a fraction).
+// FetchFlexibleEarnProducts returns OKX earn products from two sources:
+//  1. Simple Earn Flexible / Savings (public): /api/v5/finance/savings/lending-rate-summary
+//  2. On-chain Earn / DeFi (requires auth): /api/v5/finance/staking-defi/offers
+//
+// asset == "" returns all currencies. APY is already a fraction (0.05 == 5%).
 func (a *OKXBrokerAdapter) FetchFlexibleEarnProducts(_ context.Context, asset string) ([]broker.EarnProduct, error) {
 	var products []broker.EarnProduct
-	err := catchPanic(func() error {
+
+	// ── Source 1: Savings / Simple Earn Flexible (public endpoint) ────────
+	_ = catchPanic(func() error {
 		params := map[string]interface{}{}
 		if asset != "" {
 			params["ccy"] = asset
@@ -87,16 +91,57 @@ func (a *OKXBrokerAdapter) FetchFlexibleEarnProducts(_ context.Context, asset st
 			products = append(products, broker.EarnProduct{
 				Exchange:     Name,
 				Asset:        okxString(row["ccy"]),
-				ProductID:    okxString(row["ccy"]), // OKX savings are keyed by currency
+				ProductID:    okxString(row["ccy"]),
 				APY:          okxFloat(row["estRate"]),
 				CanSubscribe: true,
+				Type:         "savings",
 			})
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("okx earn: list products: %w", err)
+
+	// ── Source 2: On-chain Earn / DeFi offers (requires auth) ─────────────
+	// Gracefully skipped when API keys are absent. Only purchasable offers included.
+	if a.hasAuth {
+		_ = catchPanic(func() error {
+			params := map[string]interface{}{}
+			if asset != "" {
+				params["ccy"] = asset
+			}
+			res := <-a.client.Core.PrivateGetFinanceStakingDefiOffers(params)
+			if ccxt.IsError(res) {
+				return nil // supplemental: ignore auth/permission errors
+			}
+			for _, row := range okxData(res) {
+				if okxString(row["state"]) != "purchasable" {
+					continue
+				}
+				ccy := okxString(row["ccy"])
+				minAmt := 0.0
+				if ivArr, ok := row["investData"].([]interface{}); ok {
+					for _, iv := range ivArr {
+						if ivm, ok := iv.(map[string]interface{}); ok {
+							if okxString(ivm["ccy"]) == ccy {
+								minAmt = okxFloat(ivm["minAmt"])
+							}
+						}
+					}
+				}
+				products = append(products, broker.EarnProduct{
+					Exchange:     Name,
+					Asset:        ccy,
+					ProductID:    okxString(row["productId"]),
+					APY:          okxFloat(row["apy"]),
+					MinSubscribe: minAmt,
+					CanSubscribe: true,
+					Type:         "staking-defi",
+					Protocol:     okxString(row["protocol"]),
+				})
+			}
+			return nil
+		})
 	}
+
 	return products, nil
 }
 

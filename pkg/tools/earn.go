@@ -101,10 +101,10 @@ func (t *EarnOverviewTool) Execute(ctx context.Context, args map[string]any) *To
 
 	// Products table.
 	if len(allProducts) > 0 {
-		sb.WriteString("\nFlexible Earn Products:\n")
-		sb.WriteString(fmt.Sprintf("%-10s %-8s %-12s %-8s %-8s %15s\n",
-			"Exchange", "Asset", "Product ID", "APY%", "CanSub", "MinSubscribe"))
-		sb.WriteString(strings.Repeat("-", 75) + "\n")
+		sb.WriteString("\nEarn Products:\n")
+		sb.WriteString(fmt.Sprintf("%-10s %-8s %-14s %-15s %8s %-6s %14s\n",
+			"Exchange", "Asset", "Type", "Protocol/ID", "APY%", "CanSub", "MinSubscribe"))
+		sb.WriteString(strings.Repeat("-", 83) + "\n")
 
 		for _, p := range allProducts {
 			apyPercent := p.APY * 100
@@ -112,32 +112,44 @@ func (t *EarnOverviewTool) Execute(ctx context.Context, args map[string]any) *To
 			if !p.CanSubscribe {
 				canSub = "no"
 			}
+			ptype := p.Type
+			if ptype == "" {
+				ptype = "savings"
+			}
+			protoID := p.Protocol
+			if protoID == "" {
+				protoID = p.ProductID
+			}
 			autoSubStr := ""
 			if p.AutoSubscribe {
 				autoSubStr = " (auto)"
 			}
-			sb.WriteString(fmt.Sprintf("%-10s %-8s %-12s %7.4f%% %-8s %15.8f%s\n",
-				p.Exchange, p.Asset, p.ProductID, apyPercent, canSub, p.MinSubscribe, autoSubStr))
+			sb.WriteString(fmt.Sprintf("%-10s %-8s %-14s %-15s %7.4f%% %-6s %14.8f%s\n",
+				p.Exchange, p.Asset, ptype, protoID, apyPercent, canSub, p.MinSubscribe, autoSubStr))
 		}
 	} else {
-		sb.WriteString("\nNo flexible earn products found.\n")
+		sb.WriteString("\nNo earn products found.\n")
 	}
 
 	// Positions table.
 	if len(allPositions) > 0 {
-		sb.WriteString("\nFlexible Earn Positions:\n")
-		sb.WriteString(fmt.Sprintf("%-10s %-8s %-12s %-15s %-8s\n",
+		sb.WriteString("\nEarn Positions:\n")
+		sb.WriteString(fmt.Sprintf("%-10s %-8s %-25s %15s %8s\n",
 			"Exchange", "Asset", "Product ID", "Amount", "APY%"))
-		sb.WriteString(strings.Repeat("-", 60) + "\n")
+		sb.WriteString(strings.Repeat("-", 73) + "\n")
 
 		for _, pos := range allPositions {
 			apyPercent := pos.APY * 100
+			apyStr := fmt.Sprintf("%7.4f%%", apyPercent)
+			if apyPercent == 0 {
+				apyStr = "n/a"
+			}
 			autoSubStr := ""
 			if pos.AutoSubscribe {
 				autoSubStr = " (auto)"
 			}
-			sb.WriteString(fmt.Sprintf("%-10s %-8s %-12s %15.8f %7.4f%%%s\n",
-				pos.Exchange, pos.Asset, pos.ProductID, pos.Amount, apyPercent, autoSubStr))
+			sb.WriteString(fmt.Sprintf("%-10s %-8s %-25s %15.8f %8s%s\n",
+				pos.Exchange, pos.Asset, pos.ProductID, pos.Amount, apyStr, autoSubStr))
 		}
 	} else if len(allProducts) > 0 {
 		sb.WriteString("\nNo positions held. Use manage_earn_position to subscribe to products.\n")

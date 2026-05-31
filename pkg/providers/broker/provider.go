@@ -177,6 +177,10 @@ type EarnProduct struct {
 	CanSubscribe  bool
 	AutoSubscribe bool
 	MinSubscribe  float64
+	// Type distinguishes product categories: "savings" (lending pool) or "staking-defi" (on-chain earn).
+	// Empty string is treated as "savings" for backward compatibility.
+	Type     string
+	Protocol string // human-readable protocol name for staking-defi (e.g. "Chiliz")
 }
 
 // EarnPosition describes a currently held flexible earn position.

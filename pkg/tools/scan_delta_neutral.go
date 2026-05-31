@@ -251,13 +251,17 @@ func (t *ScanDeltaNeutralOpportunitiesTool) Execute(ctx context.Context, args ma
 				continue
 			}
 
-			// Build maps: UPPERCASE asset -> APY (fraction) and -> ProductID.
+			// Build maps: UPPERCASE asset -> best APY (fraction) and -> ProductID.
+			// When multiple products exist for the same asset (e.g. savings + staking-defi),
+			// keep the one with the higher APY so the scanner shows the best available rate.
 			assetToAPY := make(map[string]float64)
 			assetToProductID := make(map[string]string)
 			for _, prod := range products {
 				ua := strings.ToUpper(prod.Asset)
-				assetToAPY[ua] = prod.APY
-				assetToProductID[ua] = prod.ProductID
+				if prod.APY > assetToAPY[ua] {
+					assetToAPY[ua] = prod.APY
+					assetToProductID[ua] = prod.ProductID
+				}
 			}
 
 			// Set earnApy + earnProductID for each row of this exchange.
