@@ -98,7 +98,27 @@ func (t *UpdateDeltaNeutralPlanTool) Parameters() map[string]any {
 						"type":        "number",
 						"description": "Margin buffer to maintain.",
 					},
+					"alert_cooldown_duration": map[string]any{
+						"type":        "string",
+						"enum":        []string{"1h", "4h", "8h", "1d", "3d"},
+						"description": "How long breach codes are silenced after the first LLM alert. Default '1h'.",
+					},
 				},
+			},
+			"silence_codes": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "Manually silence specific breach codes (e.g. [\"funding_negative\"]). Silenced for silence_duration or alert_cooldown_duration.",
+			},
+			"silence_duration": map[string]any{
+				"type":        "string",
+				"enum":        []string{"1h", "4h", "8h", "1d", "3d"},
+				"description": "Duration for manual silence_codes. Defaults to the plan's alert_cooldown_duration.",
+			},
+			"clear_silences": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "Breach codes to un-silence. Pass [] to clear ALL active silences.",
 			},
 			"notify": map[string]any{
 				"type":        "object",
@@ -302,6 +322,33 @@ func (t *UpdateDeltaNeutralPlanTool) Execute(ctx context.Context, args map[strin
 			plan.RiskPolicy.ReserveMarginUSDT = v
 			changed = true
 		}
+		if v, ok := riskMap["alert_cooldown_duration"].(string); ok && isValidCooldownDuration(v) {
+			plan.RiskPolicy.AlertCooldownDuration = v
+			changed = true
+		}
+	}
+
+	// Manual silence: subscribe specific breach codes for a duration
+	if silenceCodesRaw, ok := args["silence_codes"].([]interface{}); ok && len(silenceCodesRaw) > 0 {
+		durStr, _ := args["silence_duration"].(string)
+		if !isValidCooldownDuration(durStr) {
+			durStr = plan.RiskPolicy.AlertCooldownDuration
+		}
+		dur := parseSilenceDuration(durStr)
+		codes := toStringSlice(silenceCodesRaw)
+		if err := t.store.UpsertAlertSilences(ctx, planID, codes, time.Now().Add(dur)); err != nil {
+			return ErrorResult(fmt.Sprintf("failed to set silences: %v", err))
+		}
+		changed = true
+	}
+
+	// Clear silences: pass [] to clear all, or specific codes
+	if clearRaw, ok := args["clear_silences"].([]interface{}); ok {
+		codes := toStringSlice(clearRaw)
+		if err := t.store.ClearAlertSilences(ctx, planID, codes); err != nil {
+			return ErrorResult(fmt.Sprintf("failed to clear silences: %v", err))
+		}
+		changed = true
 	}
 
 	// Update notification routing
@@ -338,4 +385,40 @@ func (t *UpdateDeltaNeutralPlanTool) Execute(ctx context.Context, args map[strin
 	out := fmt.Sprintf("Plan %d (%s) updated: %s, monitor_interval=%s\n",
 		plan.ID, plan.Name, status, plan.MonitorInterval)
 	return UserResult(out)
+}
+
+// isValidCooldownDuration reports whether s is one of the supported silence durations.
+func isValidCooldownDuration(s string) bool {
+	switch s {
+	case "1h", "4h", "8h", "1d", "3d":
+		return true
+	}
+	return false
+}
+
+// parseSilenceDuration converts a cooldown string to time.Duration.
+func parseSilenceDuration(s string) time.Duration {
+	switch s {
+	case "4h":
+		return 4 * time.Hour
+	case "8h":
+		return 8 * time.Hour
+	case "1d":
+		return 24 * time.Hour
+	case "3d":
+		return 3 * 24 * time.Hour
+	default: // "1h" or empty
+		return time.Hour
+	}
+}
+
+// toStringSlice converts []interface{} to []string, skipping non-strings.
+func toStringSlice(raw []interface{}) []string {
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }

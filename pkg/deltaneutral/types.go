@@ -67,6 +67,9 @@ type RiskPolicy struct {
 	ProfitTargetUSDT          float64 `json:"profit_target_usdt"`
 	MaxDrawdownUSDT           float64 `json:"max_drawdown_usdt"`
 	EscalateOnDataFailure     bool    `json:"escalate_on_data_failure"`
+	// AlertCooldownDuration controls how long breach codes are silenced after the first LLM
+	// escalation. Valid: "1h", "4h", "8h", "1d", "3d". Default "1h".
+	AlertCooldownDuration string `json:"alert_cooldown_duration"`
 }
 
 // DefaultRiskPolicy returns a RiskPolicy with conservative defaults
@@ -77,6 +80,7 @@ func DefaultRiskPolicy() RiskPolicy {
 		MaxSlippageBps:            20,
 		FundingReversalCycles:     2,
 		EscalateOnDataFailure:     true,
+		AlertCooldownDuration:     "1h",
 	}
 }
 

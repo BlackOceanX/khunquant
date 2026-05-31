@@ -294,6 +294,16 @@ func handleDeltaNeutralMonitorJob(
 		return "ok: no breach", nil
 	}
 
+	// Check alert cooldown — skip alert + LLM if all breach codes are still silenced.
+	silences, _ := dnStore.GetActiveAlertSilences(ctx, planID)
+	unsilenced := filterUnsilencedCodes(eval.BreachCodes, silences)
+	if len(unsilenced) == 0 {
+		logger.DebugCF("dn-monitor", "All breach codes within cooldown, skipping alert", map[string]any{
+			"plan_id": planID, "codes": eval.BreachCodes,
+		})
+		return "silenced: cooldown active for all breach codes", nil
+	}
+
 	// Breach detected: build and save alert.
 	logger.WarnCF("dn-monitor", "Threshold breached", map[string]any{
 		"plan_id":  planID,
@@ -351,6 +361,15 @@ func handleDeltaNeutralMonitorJob(
 		}
 	}
 
+	// Auto-silence all breach codes for the plan's AlertCooldownDuration so the same
+	// condition doesn't invoke the LLM again until the window expires.
+	silenceUntil := time.Now().Add(parseSilenceDuration(plan.RiskPolicy.AlertCooldownDuration))
+	if siErr := dnStore.UpsertAlertSilences(ctx, planID, eval.BreachCodes, silenceUntil); siErr != nil {
+		logger.WarnCF("dn-monitor", "Failed to set alert silences", map[string]any{
+			"plan_id": planID, "error": siErr.Error(),
+		})
+	}
+
 	// If cronTool is available, escalate to LLM for agent explanation.
 	if cronTool != nil {
 		return cronTool.ExecuteJob(ctx, job), nil
@@ -358,4 +377,32 @@ func handleDeltaNeutralMonitorJob(
 
 	// Alert delivered but no agent explanation.
 	return "breach alerted (no agent)", nil
+}
+
+// filterUnsilencedCodes returns codes not present in the active silences map.
+func filterUnsilencedCodes(codes []string, silences map[string]time.Time) []string {
+	var out []string
+	for _, code := range codes {
+		if _, silenced := silences[code]; !silenced {
+			out = append(out, code)
+		}
+	}
+	return out
+}
+
+// parseSilenceDuration converts a cooldown duration string to time.Duration.
+// Valid values: "1h", "4h", "8h", "1d", "3d". Defaults to 1h.
+func parseSilenceDuration(s string) time.Duration {
+	switch s {
+	case "4h":
+		return 4 * time.Hour
+	case "8h":
+		return 8 * time.Hour
+	case "1d":
+		return 24 * time.Hour
+	case "3d":
+		return 3 * 24 * time.Hour
+	default:
+		return time.Hour
+	}
 }

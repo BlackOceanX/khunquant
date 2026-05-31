@@ -968,3 +968,127 @@ func createTestPlan(t *testing.T, name string) *Plan {
 		UpdatedAt:                time.Now(),
 	}
 }
+
+// --- Alert silence tests ---
+
+func TestAlertSilences_UpsertAndGet(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	plan := createTestPlan(t, "silence-test")
+	id, _ := store.SavePlan(ctx, plan)
+
+	until := time.Now().Add(time.Hour)
+	if err := store.UpsertAlertSilences(ctx, id, []string{"funding_negative", "funding_below_min"}, until); err != nil {
+		t.Fatalf("UpsertAlertSilences: %v", err)
+	}
+
+	silences, err := store.GetActiveAlertSilences(ctx, id)
+	if err != nil {
+		t.Fatalf("GetActiveAlertSilences: %v", err)
+	}
+	if len(silences) != 2 {
+		t.Errorf("expected 2 silences, got %d", len(silences))
+	}
+	if _, ok := silences["funding_negative"]; !ok {
+		t.Error("expected funding_negative to be silenced")
+	}
+}
+
+func TestAlertSilences_ExpiredNotReturned(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	plan := createTestPlan(t, "silence-expired")
+	id, _ := store.SavePlan(ctx, plan)
+
+	// Set silence that expired 1 second ago
+	past := time.Now().Add(-time.Second)
+	if err := store.UpsertAlertSilences(ctx, id, []string{"delta_drift_high"}, past); err != nil {
+		t.Fatalf("UpsertAlertSilences: %v", err)
+	}
+
+	silences, err := store.GetActiveAlertSilences(ctx, id)
+	if err != nil {
+		t.Fatalf("GetActiveAlertSilences: %v", err)
+	}
+	if len(silences) != 0 {
+		t.Errorf("expected expired silence to be excluded, got %d", len(silences))
+	}
+}
+
+func TestAlertSilences_UpsertExtends(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	plan := createTestPlan(t, "silence-extend")
+	id, _ := store.SavePlan(ctx, plan)
+
+	// First upsert with 1h window
+	first := time.Now().Add(time.Hour)
+	store.UpsertAlertSilences(ctx, id, []string{"funding_negative"}, first)
+
+	// Second upsert with 4h — should replace
+	longer := time.Now().Add(4 * time.Hour)
+	store.UpsertAlertSilences(ctx, id, []string{"funding_negative"}, longer)
+
+	silences, _ := store.GetActiveAlertSilences(ctx, id)
+	until, ok := silences["funding_negative"]
+	if !ok {
+		t.Fatal("expected funding_negative silence after upsert")
+	}
+	// Should be closer to 4h than 1h
+	if until.Before(time.Now().Add(3 * time.Hour)) {
+		t.Errorf("expected silence extended to ~4h, got %v", until)
+	}
+}
+
+func TestAlertSilences_ClearSpecific(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	plan := createTestPlan(t, "silence-clear")
+	id, _ := store.SavePlan(ctx, plan)
+
+	until := time.Now().Add(time.Hour)
+	store.UpsertAlertSilences(ctx, id, []string{"funding_negative", "delta_drift_high"}, until)
+
+	// Clear only funding_negative
+	if err := store.ClearAlertSilences(ctx, id, []string{"funding_negative"}); err != nil {
+		t.Fatalf("ClearAlertSilences: %v", err)
+	}
+
+	silences, _ := store.GetActiveAlertSilences(ctx, id)
+	if _, ok := silences["funding_negative"]; ok {
+		t.Error("funding_negative should have been cleared")
+	}
+	if _, ok := silences["delta_drift_high"]; !ok {
+		t.Error("delta_drift_high should still be silenced")
+	}
+}
+
+func TestAlertSilences_ClearAll(t *testing.T) {
+	store, cleanup := setupTestStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	plan := createTestPlan(t, "silence-clear-all")
+	id, _ := store.SavePlan(ctx, plan)
+
+	until := time.Now().Add(time.Hour)
+	store.UpsertAlertSilences(ctx, id, []string{"funding_negative", "delta_drift_high"}, until)
+
+	// Clear all (empty slice)
+	if err := store.ClearAlertSilences(ctx, id, []string{}); err != nil {
+		t.Fatalf("ClearAlertSilences all: %v", err)
+	}
+
+	silences, _ := store.GetActiveAlertSilences(ctx, id)
+	if len(silences) != 0 {
+		t.Errorf("expected all silences cleared, got %d", len(silences))
+	}
+}

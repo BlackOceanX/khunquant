@@ -118,6 +118,11 @@ func (t *CreateDeltaNeutralPlanTool) Parameters() map[string]any {
 						"type":        "number",
 						"description": "Margin buffer to maintain (e.g. 100 USDT). For safety.",
 					},
+					"alert_cooldown_duration": map[string]any{
+						"type":        "string",
+						"enum":        []string{"1h", "4h", "8h", "1d", "3d"},
+						"description": "How long to silence an alert code after the first LLM escalation. Default '1h'.",
+					},
 				},
 			},
 			"notify": map[string]any{
@@ -205,6 +210,9 @@ func (t *CreateDeltaNeutralPlanTool) Execute(ctx context.Context, args map[strin
 		}
 		if v, ok := riskMap["reserve_margin_usdt"].(float64); ok {
 			riskPolicy.ReserveMarginUSDT = v
+		}
+		if v, ok := riskMap["alert_cooldown_duration"].(string); ok && isValidCooldownDuration(v) {
+			riskPolicy.AlertCooldownDuration = v
 		}
 	}
 

@@ -157,10 +157,26 @@ CREATE INDEX IF NOT EXISTS idx_dn_plans_asset ON delta_neutral_plans(asset);
 CREATE INDEX IF NOT EXISTS idx_dn_snapshots_plan ON delta_neutral_monitor_snapshots(plan_id);
 CREATE INDEX IF NOT EXISTS idx_dn_snapshots_checked_at ON delta_neutral_monitor_snapshots(checked_at);
 CREATE INDEX IF NOT EXISTS idx_dn_snapshots_breach ON delta_neutral_monitor_snapshots(threshold_breached);
+
+CREATE TABLE IF NOT EXISTS delta_neutral_alert_silences (
+    plan_id           INTEGER NOT NULL,
+    breach_code       TEXT    NOT NULL,
+    silenced_until_ms INTEGER NOT NULL,
+    created_at        TEXT    NOT NULL,
+    PRIMARY KEY (plan_id, breach_code)
+);
+CREATE INDEX IF NOT EXISTS idx_dn_silences_plan ON delta_neutral_alert_silences(plan_id);
 `
 
 // migrations add new columns to existing databases (idempotent — duplicate column errors are ignored).
-var migrations = []string{}
+var migrations = []string{
+	// Add alert silences table for existing databases.
+	`CREATE TABLE IF NOT EXISTS delta_neutral_alert_silences (
+        plan_id INTEGER NOT NULL, breach_code TEXT NOT NULL,
+        silenced_until_ms INTEGER NOT NULL, created_at TEXT NOT NULL,
+        PRIMARY KEY (plan_id, breach_code));`,
+	`CREATE INDEX IF NOT EXISTS idx_dn_silences_plan ON delta_neutral_alert_silences(plan_id);`,
+}
 
 // Alert represents a delta-neutral alert in the database.
 type Alert struct {
@@ -664,6 +680,67 @@ func (s *Store) LatestAlert(ctx context.Context, planID int64) (*Alert, error) {
 		return nil, nil
 	}
 	return alert, err
+}
+
+// --- Alert silence methods ---
+
+// GetActiveAlertSilences returns breach codes whose silence window is still in the future.
+func (s *Store) GetActiveAlertSilences(ctx context.Context, planID int64) (map[string]time.Time, error) {
+	nowMs := time.Now().UnixMilli()
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT breach_code, silenced_until_ms FROM delta_neutral_alert_silences
+		 WHERE plan_id = ? AND silenced_until_ms > ?`,
+		planID, nowMs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]time.Time)
+	for rows.Next() {
+		var code string
+		var untilMs int64
+		if err := rows.Scan(&code, &untilMs); err != nil {
+			return nil, err
+		}
+		result[code] = time.UnixMilli(untilMs)
+	}
+	return result, rows.Err()
+}
+
+// UpsertAlertSilences sets or extends the silence window for each breach code.
+// Existing entries are replaced (PRIMARY KEY conflict).
+func (s *Store) UpsertAlertSilences(ctx context.Context, planID int64, codes []string, until time.Time) error {
+	untilMs := until.UnixMilli()
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, code := range codes {
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT OR REPLACE INTO delta_neutral_alert_silences
+			 (plan_id, breach_code, silenced_until_ms, created_at) VALUES (?, ?, ?, ?)`,
+			planID, code, untilMs, now,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ClearAlertSilences removes silence entries. If codes is empty, removes ALL for the plan.
+func (s *Store) ClearAlertSilences(ctx context.Context, planID int64, codes []string) error {
+	if len(codes) == 0 {
+		_, err := s.db.ExecContext(ctx,
+			`DELETE FROM delta_neutral_alert_silences WHERE plan_id = ?`, planID)
+		return err
+	}
+	for _, code := range codes {
+		if _, err := s.db.ExecContext(ctx,
+			`DELETE FROM delta_neutral_alert_silences WHERE plan_id = ? AND breach_code = ?`,
+			planID, code,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SaveExecution inserts a new execution attempt and sets exec.ID on success.
