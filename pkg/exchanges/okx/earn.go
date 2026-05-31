@@ -7,77 +7,13 @@ package okx
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strconv"
-	"time"
 
 	ccxt "github.com/ccxt/ccxt/go/v4"
 
 	"github.com/cryptoquantumwave/khunquant/pkg/providers/broker"
 )
-
-const okxBaseURL = "https://www.okx.com"
-
-// okxSignedGet makes an authenticated GET request to an OKX endpoint that is not
-// available in the CCXT Go binding (e.g. the newer /api/v5/financial-product/ paths).
-// Credentials are read from the embedded CCXT client.
-func (a *OKXBrokerAdapter) okxSignedGet(path string, params map[string]string) ([]map[string]interface{}, error) {
-	apiKey := fmt.Sprint(a.client.Core.ApiKey)
-	secret := fmt.Sprint(a.client.Core.Secret)
-	passphrase := fmt.Sprint(a.client.Core.Password)
-
-	fullPath := path
-	if len(params) > 0 {
-		q := url.Values{}
-		for k, v := range params {
-			q.Set(k, v)
-		}
-		fullPath = path + "?" + q.Encode()
-	}
-
-	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
-	prehash := timestamp + "GET" + fullPath
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(prehash))
-	sign := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-
-	req, err := http.NewRequest("GET", okxBaseURL+fullPath, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("OK-ACCESS-KEY", apiKey)
-	req.Header.Set("OK-ACCESS-SIGN", sign)
-	req.Header.Set("OK-ACCESS-TIMESTAMP", timestamp)
-	req.Header.Set("OK-ACCESS-PASSPHRASE", passphrase)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http: %w", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
-	var envelope struct {
-		Code string                   `json:"code"`
-		Msg  string                   `json:"msg"`
-		Data []map[string]interface{} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return nil, fmt.Errorf("parse: %w — body: %s", err, body)
-	}
-	if envelope.Code != "0" {
-		return nil, fmt.Errorf("OKX API error code=%s msg=%s", envelope.Code, envelope.Msg)
-	}
-	return envelope.Data, nil
-}
 
 // Compile-time guarantee that the adapter satisfies broker.EarnProvider.
 var _ broker.EarnProvider = (*OKXBrokerAdapter)(nil)
@@ -164,14 +100,13 @@ func (a *OKXBrokerAdapter) FetchFlexibleEarnProducts(_ context.Context, asset st
 	return products, nil
 }
 
-// FetchFlexibleEarnPositions returns currently held OKX flexible savings / earn balances.
+// FetchFlexibleEarnPositions returns currently held OKX earn balances across all products.
 //
-// OKX has multiple earn products with different APIs:
-//  1. Old Savings (lending pool): /api/v5/finance/savings/balance → amt field
-//  2. Newer "Simple Earn" may show as frozenBal in /api/v5/account/balance (trading UTA)
-//  3. Funding account frozen balances: /api/v5/asset/balances → frozenBal field
-//
-// All three are queried and merged; duplicates (same asset already found) are skipped.
+// Four sources are queried and merged; duplicates (same asset) are skipped:
+//  1. /api/v5/finance/savings/balance        — Simple Earn Flexible / Savings lending pool
+//  2. /api/v5/account/balance details.frozenBal — UTA trading account frozen amounts
+//  3. /api/v5/asset/balances frozenBal        — Funding account frozen amounts
+//  4. /api/v5/finance/staking-defi/orders-active — On-chain Earn / DeFi positions
 func (a *OKXBrokerAdapter) FetchFlexibleEarnPositions(_ context.Context) ([]broker.EarnPosition, error) {
 	if err := a.requireAuth(); err != nil {
 		return nil, err
@@ -267,62 +202,48 @@ func (a *OKXBrokerAdapter) FetchFlexibleEarnPositions(_ context.Context) ([]brok
 		return nil
 	})
 
-	// ── Source 4: OKX Simple Earn Flexible (new /financial-product/ API) ─
-	// OKX's newer "Simple Earn Flexible" uses /api/v5/financial-product/simple-earn-flexible/
-	// which is not in CCXT v4.5.56. We call it directly via HMAC-signed HTTP.
-	// NOTE (2026-05-31): OKX's web servers currently return an HTML page for this
-	// path (www.okx.com routes it to their SPA instead of the API backend), so
-	// okxSignedGet returns a parse error and this block is skipped. Once OKX
-	// deploys the endpoint correctly this source will activate automatically.
-	if rows, err := a.okxSignedGet("/api/v5/financial-product/simple-earn-flexible/saving-balance", nil); err == nil {
-		for _, row := range rows {
-			asset := okxString(row["ccy"])
-			// OKX may use "amt", "investAmt", or "bal" for the subscribed amount.
-			amt := okxFloat(row["amt"])
-			if amt == 0 {
-				amt = okxFloat(row["investAmt"])
-			}
-			if amt == 0 {
-				amt = okxFloat(row["bal"])
-			}
-			apy := okxFloat(row["rate"])
-			if amt > 0 && !has(asset) {
-				positions = append(positions, broker.EarnPosition{
-					Exchange:  Name,
-					Asset:     asset,
-					ProductID: asset + ":simple-earn-flexible",
-					Amount:    amt,
-					APY:       apy,
-				})
-			}
+	// ── Source 4: On-chain Earn / DeFi (staking-defi) ────────────────────
+	// Assets subscribed to OKX "On-chain Earn" (e.g. CHZ) appear here.
+	// The subscribed amount is nested: investData[i].amt (not a top-level field).
+	// State values: 8=Pending, 13=Cancelling, 9=Onchain, 1=Earning, 2=Redeeming.
+	_ = catchPanic(func() error {
+		res := <-a.client.Core.PrivateGetFinanceStakingDefiOrdersActive(map[string]interface{}{})
+		if ccxt.IsError(res) {
+			return nil // supplemental: ignore error
 		}
-	}
-
-	// ── Source 5: OKX On-chain Earn active orders ─────────────────────────
-	// Same situation as Source 4 — endpoint is documented but not yet live at www.okx.com.
-	if rows, err := a.okxSignedGet("/api/v5/financial-product/on-chain-earn/active-orders", nil); err == nil {
-		for _, row := range rows {
+		for _, row := range okxData(res) {
 			asset := okxString(row["ccy"])
-			amt := okxFloat(row["investAmt"])
-			if amt == 0 {
-				amt = okxFloat(row["amt"])
+			state := okxString(row["state"])
+			// Skip terminal/exit states (2=Redeeming, 13=Cancelling); count all others.
+			// Active states: 8=Pending, 9=Onchain, 1=Earning.
+			if state == "2" || state == "13" {
+				continue
 			}
-			if amt == 0 {
-				amt = okxFloat(row["bal"])
+			// Sum investData entries whose ccy matches the order currency
+			var amt float64
+			if ivArr, ok := row["investData"].([]interface{}); ok {
+				for _, iv := range ivArr {
+					if ivm, ok := iv.(map[string]interface{}); ok {
+						if okxString(ivm["ccy"]) == asset {
+							amt += okxFloat(ivm["amt"])
+						}
+					}
+				}
 			}
-			apy := okxFloat(row["rate"])
+			apy := okxFloat(row["apy"])
 			ordID := okxString(row["ordId"])
 			if amt > 0 && !has(asset) {
 				positions = append(positions, broker.EarnPosition{
 					Exchange:  Name,
 					Asset:     asset,
-					ProductID: ordID + ":on-chain-earn",
+					ProductID: ordID + ":staking-defi",
 					Amount:    amt,
 					APY:       apy,
 				})
 			}
 		}
-	}
+		return nil
+	})
 
 	return positions, nil
 }
