@@ -404,6 +404,7 @@ func (t *ResizeDeltaNeutralPositionTool) resizeFuturesLeg(ctx context.Context, p
 	if err != nil {
 		return false, fmt.Errorf("contract count computation: %w", err)
 	}
+	baseQty := numContracts * perContractSize
 
 	side := entrySide
 	reduceOnly := false
@@ -423,7 +424,7 @@ func (t *ResizeDeltaNeutralPositionTool) resizeFuturesLeg(ctx context.Context, p
 				Symbol:                plan.FuturesSymbol,
 				Side:                  side,
 				OrderType:             "market",
-				RequestedAmount:       numContracts,
+				RequestedAmount:       baseQty,
 				RequestedNotionalUSDT: notionalDelta,
 				RequestedPrice:        markPrice,
 				State:                 string(deltaneutral.LegStateFailed),
@@ -444,7 +445,7 @@ func (t *ResizeDeltaNeutralPositionTool) resizeFuturesLeg(ctx context.Context, p
 		Symbol:                plan.FuturesSymbol,
 		Side:                  side,
 		OrderType:             "market",
-		RequestedAmount:       numContracts,
+		RequestedAmount:       baseQty,
 		RequestedNotionalUSDT: notionalDelta,
 		RequestedPrice:        markPrice,
 		State:                 string(deltaneutral.LegStatePlacing),
@@ -470,7 +471,7 @@ func (t *ResizeDeltaNeutralPositionTool) resizeFuturesLeg(ctx context.Context, p
 
 	leg.OrderID = orderID(order)
 	leg.State = string(deltaneutral.LegStateFilled)
-	leg.FilledQuantity = numContracts
+	leg.FilledQuantity = baseQty
 	leg.FilledNotionalUSDT = notionalDelta
 	leg.AvgFillPrice = markPrice
 

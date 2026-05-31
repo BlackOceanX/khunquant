@@ -204,23 +204,33 @@ func (t *UnwindDeltaNeutralPositionTool) closeFuturesLeg(ctx context.Context, pl
 		return fmt.Errorf("no active %s position found", plan.FuturesSymbol)
 	}
 
-	// Determine close side (opposite of position side)
-	closeSide := futuresCloseSide(plan.FuturesSide)
+	// Resolve contract size so the recorded quantities are in base currency (CHZ, BTC, …).
+	perContractSize := 1.0
+	if mkt, mktErr := validateActiveSwapMarket(ctx, fp, plan.FuturesSymbol, 0); mktErr == nil {
+		if mkt.ContractSize != nil && *mkt.ContractSize > 0 {
+			perContractSize = *mkt.ContractSize
+		}
+	}
+	baseQty := closeAmount * perContractSize
 
-	// Create reduce-only close order
+	// Determine close side (opposite of position side)
+	_, positionSide, _ := futuresPositionSide(plan.FuturesSide)
+	closeSide := futuresCloseSide(positionSide)
+
+	// Create reduce-only close order (amount in contracts)
 	order, err := fp.CreateFuturesOrder(ctx, broker.FuturesOrderRequest{
 		Symbol:       plan.FuturesSymbol,
 		OrderType:    "market",
 		Side:         closeSide,
 		Amount:       closeAmount,
-		PositionSide: plan.FuturesSide,
+		PositionSide: positionSide,
 		ReduceOnly:   true,
 	})
 	if err != nil {
 		return fmt.Errorf("close order failed: %w", err)
 	}
 
-	// Record the leg
+	// Record the leg with base-currency quantities for display.
 	leg := &deltaneutral.ExecutionLeg{
 		ExecutionID:     exec.ID,
 		LegType:         string(deltaneutral.LegTypeFutures),
@@ -229,10 +239,10 @@ func (t *UnwindDeltaNeutralPositionTool) closeFuturesLeg(ctx context.Context, pl
 		Symbol:          plan.FuturesSymbol,
 		Side:            closeSide,
 		OrderType:       "market",
-		RequestedAmount: closeAmount,
+		RequestedAmount: baseQty,
 		OrderID:         orderID(order),
 		State:           string(deltaneutral.LegStateFilled),
-		FilledQuantity:  closeAmount,
+		FilledQuantity:  baseQty,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}

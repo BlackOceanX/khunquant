@@ -311,6 +311,8 @@ func (t *OpenDeltaNeutralPositionTool) executeFuturesLeg(ctx context.Context, pl
 	if err != nil {
 		return false, fmt.Errorf("contract count computation: %w", err)
 	}
+	// Store base-currency quantity (CHZ, BTC, …) so the API/UI shows a meaningful amount.
+	baseQty := numContracts * perContractSize
 
 	leg := &deltaneutral.ExecutionLeg{
 		ExecutionID:           exec.ID,
@@ -320,7 +322,7 @@ func (t *OpenDeltaNeutralPositionTool) executeFuturesLeg(ctx context.Context, pl
 		Symbol:                plan.FuturesSymbol,
 		Side:                  entrySide,
 		OrderType:             "market",
-		RequestedAmount:       numContracts,
+		RequestedAmount:       baseQty,
 		RequestedNotionalUSDT: plan.FuturesNotionalUSDT,
 		RequestedPrice:        markPrice,
 		State:                 string(deltaneutral.LegStatePlacing),
@@ -354,7 +356,7 @@ func (t *OpenDeltaNeutralPositionTool) executeFuturesLeg(ctx context.Context, pl
 
 	leg.OrderID = orderID(order)
 	leg.State = string(deltaneutral.LegStateFilled)
-	leg.FilledQuantity = numContracts
+	leg.FilledQuantity = baseQty
 	leg.FilledNotionalUSDT = plan.FuturesNotionalUSDT
 	leg.AvgFillPrice = markPrice
 
