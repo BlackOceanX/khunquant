@@ -436,6 +436,94 @@ var toolCatalog = []toolCatalogEntry{
 		ConfigKey:   tools.NameGetDCASummary,
 	},
 
+	// Delta-Neutral (Track G)
+	{
+		Name:        tools.NameCreateDeltaNeutralPlan,
+		Description: tools.DescCreateDeltaNeutralPlan,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameCreateDeltaNeutralPlan,
+	},
+	{
+		Name:        tools.NameListDeltaNeutralPlans,
+		Description: tools.DescListDeltaNeutralPlans,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameListDeltaNeutralPlans,
+	},
+	{
+		Name:        tools.NameGetDeltaNeutralPlan,
+		Description: tools.DescGetDeltaNeutralPlan,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameGetDeltaNeutralPlan,
+	},
+	{
+		Name:        tools.NameUpdateDeltaNeutralPlan,
+		Description: tools.DescUpdateDeltaNeutralPlan,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameUpdateDeltaNeutralPlan,
+	},
+	{
+		Name:        tools.NameDeleteDeltaNeutralPlan,
+		Description: tools.DescDeleteDeltaNeutralPlan,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameDeleteDeltaNeutralPlan,
+	},
+	{
+		Name:        tools.NameGetDeltaNeutralSummary,
+		Description: tools.DescGetDeltaNeutralSummary,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameGetDeltaNeutralSummary,
+	},
+	{
+		Name:        tools.NameGetDeltaNeutralHistory,
+		Description: tools.DescGetDeltaNeutralHistory,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameGetDeltaNeutralHistory,
+	},
+	{
+		Name:        tools.NamePrepareDeltaNeutralPlan,
+		Description: tools.DescPrepareDeltaNeutralPlan,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NamePrepareDeltaNeutralPlan,
+	},
+	{
+		Name:        tools.NameOpenDeltaNeutralPosition,
+		Description: tools.DescOpenDeltaNeutralPosition,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameOpenDeltaNeutralPosition,
+	},
+	{
+		Name:        tools.NameUnwindDeltaNeutralPosition,
+		Description: tools.DescUnwindDeltaNeutralPosition,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameUnwindDeltaNeutralPosition,
+	},
+	{
+		Name:        tools.NameResizeDeltaNeutralPosition,
+		Description: tools.DescResizeDeltaNeutralPosition,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameResizeDeltaNeutralPosition,
+	},
+	{
+		Name:        tools.NameScanDeltaNeutralOpportunities,
+		Description: tools.DescScanDeltaNeutralOpportunities,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameScanDeltaNeutralOpportunities,
+	},
+
+	// Earn (Track G — Savings/Staking)
+	{
+		Name:        tools.NameEarnOverview,
+		Description: tools.DescEarnOverview,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameEarnOverview,
+	},
+	{
+		Name:        tools.NameManageEarnPosition,
+		Description: tools.DescManageEarnPosition,
+		Category:    tools.CatDeltaNeutral,
+		ConfigKey:   tools.NameManageEarnPosition,
+	},
+
 	// PnL — Profit and Loss (Track F)
 	{
 		Name:        tools.NameGetPnLSummary,
@@ -695,6 +783,34 @@ func applyToolState(cfg *config.Config, toolName string, enabled bool) error {
 		cfg.Tools.GetDCAHistory.Enabled = enabled
 	case tools.NameGetDCASummary:
 		cfg.Tools.GetDCASummary.Enabled = enabled
+	case tools.NameCreateDeltaNeutralPlan:
+		cfg.Tools.CreateDeltaNeutralPlan.Enabled = enabled
+	case tools.NameListDeltaNeutralPlans:
+		cfg.Tools.ListDeltaNeutralPlans.Enabled = enabled
+	case tools.NameGetDeltaNeutralPlan:
+		cfg.Tools.GetDeltaNeutralPlan.Enabled = enabled
+	case tools.NameUpdateDeltaNeutralPlan:
+		cfg.Tools.UpdateDeltaNeutralPlan.Enabled = enabled
+	case tools.NameDeleteDeltaNeutralPlan:
+		cfg.Tools.DeleteDeltaNeutralPlan.Enabled = enabled
+	case tools.NameGetDeltaNeutralSummary:
+		cfg.Tools.GetDeltaNeutralSummary.Enabled = enabled
+	case tools.NameGetDeltaNeutralHistory:
+		cfg.Tools.GetDeltaNeutralHistory.Enabled = enabled
+	case tools.NamePrepareDeltaNeutralPlan:
+		cfg.Tools.PrepareDeltaNeutralPlan.Enabled = enabled
+	case tools.NameOpenDeltaNeutralPosition:
+		cfg.Tools.OpenDeltaNeutralPosition.Enabled = enabled
+	case tools.NameUnwindDeltaNeutralPosition:
+		cfg.Tools.UnwindDeltaNeutralPosition.Enabled = enabled
+	case tools.NameResizeDeltaNeutralPosition:
+		cfg.Tools.ResizeDeltaNeutralPosition.Enabled = enabled
+	case tools.NameScanDeltaNeutralOpportunities:
+		cfg.Tools.ScanDeltaNeutralOpportunities.Enabled = enabled
+	case tools.NameEarnOverview:
+		cfg.Tools.EarnOverview.Enabled = enabled
+	case tools.NameManageEarnPosition:
+		cfg.Tools.ManageEarnPosition.Enabled = enabled
 	case tools.NameGetPnLSummary:
 		cfg.Tools.GetPnLSummary.Enabled = enabled
 	case tools.NameGetPnLDetail:

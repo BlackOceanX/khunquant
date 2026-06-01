@@ -150,11 +150,70 @@ type FuturesProvider interface {
 	FetchFuturesOpenOrders(ctx context.Context, symbol string) ([]ccxt.Order, error)
 	FetchFuturesPositions(ctx context.Context, symbols []string) ([]ccxt.Position, error)
 	FetchFuturesFundingRate(ctx context.Context, symbol string) (ccxt.FundingRate, error)
+	FetchFuturesFundingRates(ctx context.Context, symbols []string) (map[string]ccxt.FundingRate, error)
 	FetchFuturesFundingHistory(ctx context.Context, symbol string, since *int64, limit int) ([]ccxt.FundingHistory, error)
+	FetchPublicFundingRateHistory(ctx context.Context, symbol string, since *int64, limit int) ([]ccxt.FundingRateHistory, error)
 	LoadFuturesMarkets(ctx context.Context) (map[string]ccxt.MarketInterface, error)
 	FetchFuturesMarkPrice(ctx context.Context, symbol string) (float64, error)
 	CancelFuturesOrder(ctx context.Context, id, symbol string) (ccxt.Order, error)
 	CancelAllFuturesOrders(ctx context.Context, symbol string) ([]ccxt.Order, error)
+}
+
+// EarnRatePoint represents a single historical earn rate data point.
+// Rate is an annualized fraction (0.05 == 5% APY).
+// Timestamp is in milliseconds.
+type EarnRatePoint struct {
+	Rate      float64
+	Timestamp int64
+}
+
+// EarnProduct describes a flexible savings/earn product offered for an asset.
+// APY is a fraction (0.05 == 5%).
+type EarnProduct struct {
+	Exchange      string
+	Asset         string
+	ProductID     string
+	APY           float64
+	CanSubscribe  bool
+	AutoSubscribe bool
+	MinSubscribe  float64
+	// Type distinguishes product categories: "savings" (lending pool) or "staking-defi" (on-chain earn).
+	// Empty string is treated as "savings" for backward compatibility.
+	Type     string
+	Protocol string // human-readable protocol name for staking-defi (e.g. "Chiliz")
+}
+
+// EarnPosition describes a currently held flexible earn position.
+// APY is a fraction (0.05 == 5%).
+type EarnPosition struct {
+	Exchange      string
+	Asset         string
+	ProductID     string
+	Amount        float64
+	APY           float64
+	AutoSubscribe bool
+}
+
+// EarnProvider is implemented by providers that expose flexible savings/earn
+// products for the spot leg of a delta-neutral position. All methods require
+// authenticated credentials except where the underlying APY endpoint is public.
+type EarnProvider interface {
+	Provider
+	// FetchFlexibleEarnProducts returns flexible earn products. asset == "" returns all.
+	FetchFlexibleEarnProducts(ctx context.Context, asset string) ([]EarnProduct, error)
+	// FetchFlexibleEarnPositions returns currently held flexible earn positions.
+	FetchFlexibleEarnPositions(ctx context.Context) ([]EarnPosition, error)
+	// SubscribeFlexibleEarn moves amount of asset into the given flexible product.
+	// Returns an exchange transaction/purchase id.
+	SubscribeFlexibleEarn(ctx context.Context, productID, asset string, amount float64, autoSubscribe bool) (string, error)
+	// RedeemFlexibleEarn redeems amount (or all) of asset from the flexible product.
+	// Returns an exchange transaction/redemption id.
+	RedeemFlexibleEarn(ctx context.Context, productID, asset string, amount float64, redeemAll bool) (string, error)
+	// SetFlexibleAutoSubscribe enables/disables auto-subscribe for the product/asset.
+	SetFlexibleAutoSubscribe(ctx context.Context, productID, asset string, enable bool) error
+	// FetchFlexibleEarnRateHistory returns historical rate data points.
+	// productID is required; since is optional. limit capped at 100 by callers.
+	FetchFlexibleEarnRateHistory(ctx context.Context, productID, asset string, since *int64, limit int) ([]EarnRatePoint, error)
 }
 
 // Balance mirrors pkg/exchanges.Balance so callers don't need to import both.

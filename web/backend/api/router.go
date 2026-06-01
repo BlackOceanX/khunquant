@@ -77,6 +77,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Agent DCA plans (workspace/memory/dca/dca.db)
 	h.registerAgentDCARoutes(mux)
 
+	// Agent delta-neutral plans (workspace/memory/delta_neutral/delta_neutral.db)
+	h.registerAgentDeltaNeutralRoutes(mux)
+
 	// Skills and tools support/actions
 	h.registerSkillRoutes(mux)
 	h.registerToolRoutes(mux)

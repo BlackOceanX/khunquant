@@ -87,6 +87,9 @@ func (o *OKXExchange) SupportedWalletTypes() []string {
 	return []string{"trading", "funding", "all"}
 }
 
+// CcxtClient returns the underlying authenticated CCXT Okx client. Intended for diagnostic tools only.
+func (o *OKXExchange) CcxtClient() *ccxt.Okx { return o.client }
+
 // GetBalances implements the basic Exchange interface (trading account only).
 func (o *OKXExchange) GetBalances(ctx context.Context) ([]exchanges.Balance, error) {
 	if err := o.requireAuth(); err != nil {

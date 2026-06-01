@@ -35,6 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 
 import { DCASnapshotPanel } from "./dca-snapshot-panel"
+import { DeltaNeutralPanel } from "./delta-neutral-panel"
 import { SnapshotPanel } from "./snapshot-panel"
 
 function formatBytes(bytes: number): string {
@@ -209,6 +210,14 @@ export function AgentMemoryPage() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="delta_neutral">
+            {t("pages.agent.agent_memory.tabs.delta_neutral")}
+            {sizeInfo != null && (
+              <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                ({formatBytes(sizeInfo.delta_neutral_bytes)})
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="mt-0 flex flex-1 flex-col overflow-hidden">
@@ -347,6 +356,12 @@ export function AgentMemoryPage() {
         <TabsContent value="dca_snapshot" className="mt-0 flex flex-1 overflow-hidden">
           <div className="border-border/40 flex min-h-0 flex-1 overflow-hidden rounded-lg border">
             <DCASnapshotPanel />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="delta_neutral" className="mt-0 flex flex-1 overflow-hidden">
+          <div className="border-border/40 flex min-h-0 flex-1 overflow-hidden rounded-lg border">
+            <DeltaNeutralPanel />
           </div>
         </TabsContent>
       </Tabs>

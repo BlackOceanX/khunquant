@@ -498,7 +498,8 @@
         "tabs": {
           "general": "General",
           "snapshot": "Assets Snapshot",
-          "dca_snapshot": "DCA Snapshot"
+          "dca_snapshot": "DCA Snapshot",
+          "delta_neutral": "Delta-Neutral"
         },
         "snapshot": {
           "empty": "No snapshots found.",
