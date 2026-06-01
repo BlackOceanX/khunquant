@@ -796,10 +796,13 @@ func registerDevMCP(cfg *config.Config, services *gatewayServices, al *agent.Age
 		return
 	}
 
-	// Auto-generate a runtime token if not configured.
-	// The token is not persisted to disk; it is shown in the startup log.
+	// Auto-generate a token if not already configured, then persist it so the
+	// WebUI status endpoint and subsequent restarts can read the same token.
 	if cfg.Debug.DevMCP.Token == "" {
 		cfg.Debug.DevMCP.Token = generateDevMCPToken()
+		if err := config.SaveConfig(internal.GetConfigPath(), cfg); err != nil {
+			logger.WarnCF("devmcp", "Failed to persist dev-mcp token to config", map[string]any{"err": err.Error()})
+		}
 	}
 
 	store := debugtap.NewStore(cfg.Debug.DevMCP.MaxLogEntries)
@@ -813,14 +816,16 @@ func registerDevMCP(cfg *config.Config, services *gatewayServices, al *agent.Age
 	})
 
 	prefix := cfg.Debug.DevMCP.PathPrefix
+	endpoint := fmt.Sprintf("http://%s:%d%s", cfg.Gateway.Host, cfg.Gateway.Port, prefix)
 	guarded := loopbackOnly(bearerTokenMiddleware(cfg.Debug.DevMCP.Token,
 		http.StripPrefix(prefix, handler)))
 
 	services.ChannelManager.Handle(prefix, guarded)
 	services.ChannelManager.Handle(prefix+"/", guarded)
 
+	// Print token to stdout so developers can copy it immediately.
+	fmt.Printf("🔌 Dev MCP: %s\n   Token:    %s\n", endpoint, cfg.Debug.DevMCP.Token)
 	logger.WarnCF("devmcp",
-		fmt.Sprintf("Developer MCP server enabled at http://%s:%d%s — disable in production (token set: %v)",
-			cfg.Gateway.Host, cfg.Gateway.Port, prefix, cfg.Debug.DevMCP.Token != ""),
+		fmt.Sprintf("Developer MCP server enabled at %s — disable in production", endpoint),
 		nil)
 }
