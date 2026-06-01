@@ -19,17 +19,19 @@ func generateDevMCPToken() string {
 	return hex.EncodeToString(b)
 }
 
-// bearerTokenMiddleware rejects requests that don't carry the correct
-// Authorization: Bearer <token> header. Uses constant-time comparison
-// to prevent timing side-channels.
+// bearerTokenMiddleware rejects requests that don't carry the correct token.
+// Accepts it via Authorization: Bearer <token> header OR ?token=<token> query
+// parameter, so MCP clients that can't set custom headers (e.g. Codex rmcp)
+// can embed the token directly in the URL. Uses constant-time comparison.
 // If token is empty, all requests are allowed through (token auth disabled).
 func bearerTokenMiddleware(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token != "" {
-			auth := r.Header.Get("Authorization")
 			var provided string
-			if strings.HasPrefix(auth, "Bearer ") {
+			if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 				provided = strings.TrimPrefix(auth, "Bearer ")
+			} else if q := r.URL.Query().Get("token"); q != "" {
+				provided = q
 			}
 			if subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
