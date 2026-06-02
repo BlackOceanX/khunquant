@@ -23,7 +23,7 @@ import (
 type OAuthProviderConfig struct {
 	Issuer       string
 	ClientID     string
-	ClientSecret string // Required for Google OAuth (confidential client)
+	ClientSecret string
 	TokenURL     string // Override token endpoint (Google uses a different URL than issuer)
 	Scopes       string
 	Originator   string
@@ -50,29 +50,15 @@ func OpenAIOAuthConfig() OAuthProviderConfig {
 }
 
 // GoogleAntigravityOAuthConfig returns the OAuth configuration for Google Cloud Code Assist (Antigravity).
-// Client credentials are the same ones used by OpenCode/pi-ai for Cloud Code Assist access.
 func GoogleAntigravityOAuthConfig() OAuthProviderConfig {
-	// These are the same client credentials used by the OpenCode antigravity plugin.
-	clientID := decodeBase64(
-		"MTA3MTAwNjA2MDU5MS10bWhzc2luMmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlcC5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==",
-	)
-	clientSecret := decodeBase64("R09DU1BYLUs1OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY=")
 	return OAuthProviderConfig{
 		Issuer:       "https://accounts.google.com/o/oauth2/v2",
 		TokenURL:     "https://oauth2.googleapis.com/token",
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
+		ClientID:     os.Getenv("KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_ID"),
+		ClientSecret: os.Getenv("KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_SECRET"),
 		Scopes:       "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs",
 		Port:         51121,
 	}
-}
-
-func decodeBase64(s string) string {
-	data, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		return s
-	}
-	return string(data)
 }
 
 // GenerateState generates a random state string for OAuth CSRF protection.
@@ -89,6 +75,10 @@ func LoginBrowser(cfg OAuthProviderConfig) (*AuthCredential, error) {
 }
 
 func LoginBrowserWithOptions(cfg OAuthProviderConfig, opts LoginBrowserOptions) (*AuthCredential, error) {
+	if err := validateOAuthConfig(cfg); err != nil {
+		return nil, err
+	}
+
 	pkce, err := GeneratePKCE()
 	if err != nil {
 		return nil, fmt.Errorf("generating PKCE: %w", err)
@@ -182,6 +172,20 @@ func LoginBrowserWithOptions(cfg OAuthProviderConfig, opts LoginBrowserOptions) 
 	case <-time.After(5 * time.Minute):
 		return nil, fmt.Errorf("authentication timed out after 5 minutes")
 	}
+}
+
+func validateOAuthConfig(cfg OAuthProviderConfig) error {
+	isGoogleOAuth := cfg.TokenURL == "https://oauth2.googleapis.com/token"
+	if strings.TrimSpace(cfg.ClientID) == "" {
+		if isGoogleOAuth {
+			return fmt.Errorf("google oauth client ID is required; set KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_ID")
+		}
+		return fmt.Errorf("oauth client ID is required")
+	}
+	if isGoogleOAuth && strings.TrimSpace(cfg.ClientSecret) == "" {
+		return fmt.Errorf("google oauth client secret is required; set KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_SECRET")
+	}
+	return nil
 }
 
 func oauthCallbackRedirectURI(port int) string {

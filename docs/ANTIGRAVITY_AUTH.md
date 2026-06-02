@@ -181,15 +181,12 @@ async function fetchProjectId(accessToken: string): Promise<string> {
 
 ### Client Credentials
 
-**Important:** These are base64-encoded in the source code for sync with pi-ai:
+Google Antigravity OAuth requires a project-owned OAuth client. Configure it with
+environment variables rather than committing credentials to the repository:
 
-```typescript
-const decode = (s: string) => Buffer.from(s, "base64").toString();
-
-const CLIENT_ID = decode(
-  "MTA3MTAwNjA2MDU5MS10bWhzc2luMmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlcC5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ=="
-);
-const CLIENT_SECRET = decode("R09DU1BYLUs1OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY=");
+```bash
+export KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_ID="your-google-oauth-client-id"
+export KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_SECRET="your-google-oauth-client-secret"
 ```
 
 ### OAuth Flow Modes

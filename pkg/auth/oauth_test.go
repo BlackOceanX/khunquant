@@ -490,45 +490,6 @@ func newMockOAuthTokenServer() *httptest.Server {
 	}))
 }
 
-// TestDecodeBase64 tests the decodeBase64 function
-func TestDecodeBase64(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "valid base64",
-			input: base64.StdEncoding.EncodeToString([]byte("hello world")),
-			want:  "hello world",
-		},
-		{
-			name:  "invalid base64",
-			input: "not-valid-base64!!!",
-			want:  "not-valid-base64!!!",
-		},
-		{
-			name:  "empty string",
-			input: "",
-			want:  "",
-		},
-		{
-			name:  "unicode",
-			input: base64.StdEncoding.EncodeToString([]byte("café")),
-			want:  "café",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := decodeBase64(tt.input)
-			if got != tt.want {
-				t.Errorf("decodeBase64(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGenerateState_Length(t *testing.T) {
 	state, err := GenerateState()
 	if err != nil {
@@ -591,12 +552,15 @@ func TestParseFlexibleInt_Invalid(t *testing.T) {
 }
 
 func TestGoogleAntigravityOAuthConfig_Fields(t *testing.T) {
+	t.Setenv("KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_ID", "test-client-id")
+	t.Setenv("KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_SECRET", "test-client-secret")
+
 	cfg := GoogleAntigravityOAuthConfig()
-	if cfg.ClientID == "" {
-		t.Error("ClientID should be non-empty")
+	if cfg.ClientID != "test-client-id" {
+		t.Errorf("ClientID = %q, want test-client-id", cfg.ClientID)
 	}
-	if cfg.ClientSecret == "" {
-		t.Error("ClientSecret should be non-empty")
+	if cfg.ClientSecret != "test-client-secret" {
+		t.Errorf("ClientSecret = %q, want test-client-secret", cfg.ClientSecret)
 	}
 	if !strings.Contains(cfg.Issuer, "google.com") {
 		t.Errorf("Issuer should contain google.com, got %q", cfg.Issuer)
