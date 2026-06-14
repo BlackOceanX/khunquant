@@ -51,14 +51,24 @@ func OpenAIOAuthConfig() OAuthProviderConfig {
 }
 
 // GoogleAntigravityOAuthConfig returns the OAuth configuration for Google Cloud Code Assist (Antigravity).
-// Configure client credentials with KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_ID
-// and KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_SECRET.
+// The default OAuth client is intentionally public installed-app metadata from
+// OpenCode/pi-ai, not a server-side credential. Environment variables can
+// override it for custom Google OAuth clients.
 func GoogleAntigravityOAuthConfig() OAuthProviderConfig {
+	clientID := "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
+	clientSecret := "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"
+	if v := os.Getenv("KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_ID"); v != "" {
+		clientID = v
+	}
+	if v := os.Getenv("KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_SECRET"); v != "" {
+		clientSecret = v
+	}
+
 	return OAuthProviderConfig{
 		Issuer:       "https://accounts.google.com/o/oauth2/v2",
 		TokenURL:     "https://oauth2.googleapis.com/token",
-		ClientID:     os.Getenv("KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_ID"),
-		ClientSecret: os.Getenv("KHUNQUANT_GOOGLE_ANTIGRAVITY_CLIENT_SECRET"),
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
 		Scopes:       "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs",
 		Provider:     "google-antigravity",
 		Port:         51121,
@@ -66,14 +76,24 @@ func GoogleAntigravityOAuthConfig() OAuthProviderConfig {
 }
 
 // GoogleGeminiOAuthConfig returns the OAuth configuration for Gemini CLI / Gemini Code Assist.
-// Configure client credentials with KHUNQUANT_GOOGLE_GEMINI_CLIENT_ID
-// and KHUNQUANT_GOOGLE_GEMINI_CLIENT_SECRET.
+// The default OAuth client is intentionally public installed-app metadata from
+// gemini-cli, not a server-side credential. Environment variables can override
+// it for custom Google OAuth clients.
 func GoogleGeminiOAuthConfig() OAuthProviderConfig {
+	clientID := "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
+	clientSecret := "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"
+	if v := os.Getenv("KHUNQUANT_GOOGLE_GEMINI_CLIENT_ID"); v != "" {
+		clientID = v
+	}
+	if v := os.Getenv("KHUNQUANT_GOOGLE_GEMINI_CLIENT_SECRET"); v != "" {
+		clientSecret = v
+	}
+
 	return OAuthProviderConfig{
 		Issuer:       "https://accounts.google.com/o/oauth2/v2",
 		TokenURL:     "https://oauth2.googleapis.com/token",
-		ClientID:     os.Getenv("KHUNQUANT_GOOGLE_GEMINI_CLIENT_ID"),
-		ClientSecret: os.Getenv("KHUNQUANT_GOOGLE_GEMINI_CLIENT_SECRET"),
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
 		Scopes:       "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
 		Provider:     "google-gemini",
 		Port:         51122,
