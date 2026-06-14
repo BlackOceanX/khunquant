@@ -18,9 +18,13 @@ func EnsureOnboarded(configPath string) error {
 		return fmt.Errorf("stat config: %w", err)
 	}
 
-	cmd := execCommand(FindKhunquantBinary(), "onboard")
+	// Run onboarding non-interactively. The "--yes" flag accepts the terms,
+	// skips credential encryption, and skips portfolio prompts. Piping stdin
+	// is intentionally avoided: the legal agreement reads stdin via a buffered
+	// reader, so any piped answer would be consumed there and the wrong prompt
+	// would receive the input.
+	cmd := execCommand(FindKhunquantBinary(), "onboard", "--yes")
 	cmd.Env = append(os.Environ(), "KHUNQUANT_CONFIG="+configPath)
-	cmd.Stdin = strings.NewReader("n\n")
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

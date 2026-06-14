@@ -11,14 +11,24 @@ import (
 	"github.com/cryptoquantumwave/khunquant/pkg/credential"
 )
 
-func onboard() {
-	if !promptLegalAgreement() {
+func onboard(nonInteractive bool) {
+	if nonInteractive {
+		fmt.Println("Running non-interactive onboarding: accepting the terms and using defaults.")
+	} else if !promptLegalAgreement() {
 		return
 	}
 
 	configPath := internal.GetConfigPath()
 
 	if _, err := os.Stat(configPath); err == nil {
+		if nonInteractive {
+			// Never clobber an existing config without explicit confirmation.
+			// Still make sure the workspace templates (skills, identity, etc.)
+			// exist so the launcher has something to show.
+			fmt.Printf("Config already exists at %s; leaving it unchanged.\n", configPath)
+			ensureWorkspaceTemplates(configPath)
+			return
+		}
 		fmt.Printf("Config already exists at %s\n", configPath)
 		fmt.Print("Overwrite config with defaults? (y/n): ")
 		var response string
@@ -29,7 +39,12 @@ func onboard() {
 		}
 	}
 
-	encrypted := promptEncryptionSetup(configPath)
+	encrypted := false
+	if nonInteractive {
+		fmt.Println("Skipping credential encryption (credentials stored in plaintext; run 'khunquant auth encrypt' to enable).")
+	} else {
+		encrypted = promptEncryptionSetup(configPath)
+	}
 
 	cfg := config.DefaultConfig()
 
@@ -38,14 +53,20 @@ func onboard() {
 		os.Exit(1)
 	}
 
-	// Portfolio / exchange setup.
-	enabledExchanges, err := setupPortfolios(cfg)
-	if err != nil {
-		fmt.Printf("Warning: portfolio setup failed: %v\n", err)
-	} else if len(enabledExchanges) > 0 {
-		if err := config.SaveConfig(configPath, cfg); err != nil {
-			fmt.Printf("Error saving config after portfolio setup: %v\n", err)
-			os.Exit(1)
+	// Portfolio / exchange setup (interactive only).
+	var enabledExchanges []string
+	if !nonInteractive {
+		exchanges, err := setupPortfolios(cfg)
+		if err != nil {
+			fmt.Printf("Warning: portfolio setup failed: %v\n", err)
+		} else {
+			enabledExchanges = exchanges
+			if len(enabledExchanges) > 0 {
+				if err := config.SaveConfig(configPath, cfg); err != nil {
+					fmt.Printf("Error saving config after portfolio setup: %v\n", err)
+					os.Exit(1)
+				}
+			}
 		}
 	}
 
@@ -132,6 +153,27 @@ func promptEncryptionSetup(configPath string) bool {
 	}
 
 	return true
+}
+
+// ensureWorkspaceTemplates creates the workspace templates only when the
+// workspace directory is missing, so an existing (possibly customized)
+// workspace is never overwritten. Used by non-interactive onboarding when a
+// config already exists but the workspace was never created.
+func ensureWorkspaceTemplates(configPath string) {
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		fmt.Printf("Warning: could not load existing config to locate workspace: %v\n", err)
+		return
+	}
+	workspace := cfg.WorkspacePath()
+	if workspace == "" {
+		return
+	}
+	if _, err := os.Stat(workspace); err == nil {
+		// Workspace already exists; leave it untouched.
+		return
+	}
+	createWorkspaceTemplates(workspace)
 }
 
 func createWorkspaceTemplates(workspace string) {
