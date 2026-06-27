@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -29,16 +31,28 @@ import (
 	"github.com/cryptoquantumwave/khunquant/pkg/utils"
 )
 
+// errCodeTenantTokenInvalid is the Feishu API error code for an expired/revoked
+// tenant_access_token. The Lark SDK's built-in retry does not clear its cache
+// on this error, so we do it ourselves.
+const errCodeTenantTokenInvalid = 99991663
+
 type FeishuChannel struct {
 	*channels.BaseChannel
-	config   config.FeishuConfig
-	client   *lark.Client
-	wsClient *larkws.Client
+	config     config.FeishuConfig
+	client     *lark.Client
+	wsClient   *larkws.Client
+	tokenCache *tokenCache // custom cache that supports invalidation
 
-	botOpenID atomic.Value // stores string; populated lazily for @mention detection
+	botOpenID    atomic.Value // stores string; populated lazily for @mention detection
+	messageCache sync.Map     // caches fetched messages (messageID -> *larkim.Message)
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
+}
+
+type cachedMessage struct {
+	msg    *larkim.Message
+	expiry time.Time
 }
 
 func NewFeishuChannel(cfg config.FeishuConfig, bus *bus.MessageBus) (*FeishuChannel, error) {
@@ -47,10 +61,12 @@ func NewFeishuChannel(cfg config.FeishuConfig, bus *bus.MessageBus) (*FeishuChan
 		channels.WithReasoningChannelID(cfg.ReasoningChannelID),
 	)
 
+	tc := newTokenCache()
 	ch := &FeishuChannel{
 		BaseChannel: base,
 		config:      cfg,
-		client:      lark.NewClient(cfg.AppID, cfg.AppSecret.String()),
+		tokenCache:  tc,
+		client:      lark.NewClient(cfg.AppID, cfg.AppSecret.String(), lark.WithTokenCache(tc)),
 	}
 	ch.SetOwner(ch)
 	return ch, nil
@@ -147,6 +163,7 @@ func (c *FeishuChannel) EditMessage(ctx context.Context, chatID, messageID, cont
 		return fmt.Errorf("feishu edit: %w", err)
 	}
 	if !resp.Success() {
+		c.invalidateTokenOnAuthError(resp.Code)
 		return fmt.Errorf("feishu edit api error (code=%d msg=%s)", resp.Code, resp.Msg)
 	}
 	return nil
@@ -186,6 +203,7 @@ func (c *FeishuChannel) SendPlaceholder(ctx context.Context, chatID string) (str
 		return "", fmt.Errorf("feishu placeholder send: %w", err)
 	}
 	if !resp.Success() {
+		c.invalidateTokenOnAuthError(resp.Code)
 		return "", fmt.Errorf("feishu placeholder api error (code=%d msg=%s)", resp.Code, resp.Msg)
 	}
 
@@ -198,15 +216,18 @@ func (c *FeishuChannel) SendPlaceholder(ctx context.Context, chatID string) (str
 // ReactToMessage implements channels.ReactionCapable.
 // Adds a reaction (randomly chosen from config) and returns an undo function to remove it.
 func (c *FeishuChannel) ReactToMessage(ctx context.Context, chatID, messageID string) (func(), error) {
-	// Get emoji list from config
-	emojiList := c.config.RandomReactionEmoji
-	var chosenEmoji string
-	if len(emojiList) == 0 {
-		// Default to "Pin" if no config
-		chosenEmoji = "Pin"
-	} else {
-		idx := rand.Intn(len(emojiList))
-		chosenEmoji = emojiList[idx]
+	// Get emoji list from config (Feishu emoji_type keys, e.g. Pin, THUMBSUP).
+	// Ignore empty entries so a list like ["", "Pin"] does not randomly pick "" (API 231001).
+	var candidates []string
+	for _, e := range c.config.RandomReactionEmoji {
+		e = strings.TrimSpace(e)
+		if e != "" {
+			candidates = append(candidates, e)
+		}
+	}
+	chosenEmoji := "Pin"
+	if len(candidates) > 0 {
+		chosenEmoji = candidates[rand.Intn(len(candidates))]
 	}
 
 	req := larkim.NewCreateMessageReactionReqBuilder().
@@ -226,6 +247,7 @@ func (c *FeishuChannel) ReactToMessage(ctx context.Context, chatID, messageID st
 		return func() {}, fmt.Errorf("feishu react: %w", err)
 	}
 	if !resp.Success() {
+		c.invalidateTokenOnAuthError(resp.Code)
 		logger.ErrorCF("feishu", "Reaction API error", map[string]any{
 			"emoji":      chosenEmoji,
 			"message_id": messageID,
@@ -376,24 +398,8 @@ func (c *FeishuChannel) handleMessageReceive(ctx context.Context, event *larkim.
 	// Append media tags to content (like Telegram does)
 	content = appendMediaTags(content, messageType, mediaRefs)
 
-	if content == "" {
-		content = "[empty message]"
-	}
-
-	metadata := map[string]string{}
-	if messageID != "" {
-		metadata["message_id"] = messageID
-	}
-	if messageType != "" {
-		metadata["message_type"] = messageType
-	}
 	chatType := stringValue(message.ChatType)
-	if chatType != "" {
-		metadata["chat_type"] = chatType
-	}
-	if sender != nil && sender.TenantKey != nil {
-		metadata["tenant_key"] = *sender.TenantKey
-	}
+	metadata := buildInboundMetadata(message, sender)
 
 	var peer bus.Peer
 	if chatType == "p2p" {
@@ -417,11 +423,24 @@ func (c *FeishuChannel) handleMessageReceive(ctx context.Context, event *larkim.
 		content = cleaned
 	}
 
+	if replyTargetID(message) != "" || stringValue(message.ThreadId) != "" {
+		content, mediaRefs = c.prependReplyContext(ctx, message, chatID, content, mediaRefs)
+	}
+	if content == "" {
+		content = "[empty message]"
+	}
+
 	logger.InfoCF("feishu", "Feishu message received", map[string]any{
 		"sender_id":  senderID,
 		"chat_id":    chatID,
 		"message_id": messageID,
 		"preview":    utils.Truncate(content, 80),
+	})
+	logger.InfoCF("feishu", "Feishu reply linkage", map[string]any{
+		"message_id": messageID,
+		"parent_id":  stringValue(message.ParentId),
+		"root_id":    stringValue(message.RootId),
+		"thread_id":  stringValue(message.ThreadId),
 	})
 
 	c.HandleMessage(ctx, peer, messageID, senderID, chatID, content, mediaRefs, metadata, senderInfo)
@@ -451,6 +470,7 @@ func (c *FeishuChannel) fetchBotOpenID(ctx context.Context) error {
 		return fmt.Errorf("bot info parse: %w", err)
 	}
 	if result.Code != 0 {
+		c.invalidateTokenOnAuthError(result.Code)
 		return fmt.Errorf("bot info api error (code=%d)", result.Code)
 	}
 	if result.Bot.OpenID == "" {
@@ -593,6 +613,7 @@ func (c *FeishuChannel) downloadResource(
 		return ""
 	}
 	if !resp.Success() {
+		c.invalidateTokenOnAuthError(resp.Code)
 		logger.ErrorCF("feishu", "Resource download api error", map[string]any{
 			"code": resp.Code,
 			"msg":  resp.Msg,
@@ -705,6 +726,7 @@ func (c *FeishuChannel) sendCard(ctx context.Context, chatID, cardContent string
 	}
 
 	if !resp.Success() {
+		c.invalidateTokenOnAuthError(resp.Code)
 		return fmt.Errorf("feishu api error (code=%d msg=%s): %w", resp.Code, resp.Msg, channels.ErrTemporary)
 	}
 
@@ -730,6 +752,7 @@ func (c *FeishuChannel) sendImage(ctx context.Context, chatID string, file *os.F
 		return fmt.Errorf("feishu image upload: %w", err)
 	}
 	if !uploadResp.Success() {
+		c.invalidateTokenOnAuthError(uploadResp.Code)
 		return fmt.Errorf("feishu image upload api error (code=%d msg=%s)", uploadResp.Code, uploadResp.Msg)
 	}
 	if uploadResp.Data == nil || uploadResp.Data.ImageKey == nil {
@@ -754,6 +777,7 @@ func (c *FeishuChannel) sendImage(ctx context.Context, chatID string, file *os.F
 		return fmt.Errorf("feishu image send: %w", err)
 	}
 	if !resp.Success() {
+		c.invalidateTokenOnAuthError(resp.Code)
 		return fmt.Errorf("feishu image send api error (code=%d msg=%s)", resp.Code, resp.Msg)
 	}
 	return nil
@@ -784,6 +808,7 @@ func (c *FeishuChannel) sendFile(ctx context.Context, chatID string, file *os.Fi
 		return fmt.Errorf("feishu file upload: %w", err)
 	}
 	if !uploadResp.Success() {
+		c.invalidateTokenOnAuthError(uploadResp.Code)
 		return fmt.Errorf("feishu file upload api error (code=%d msg=%s)", uploadResp.Code, uploadResp.Msg)
 	}
 	if uploadResp.Data == nil || uploadResp.Data.FileKey == nil {
@@ -808,6 +833,7 @@ func (c *FeishuChannel) sendFile(ctx context.Context, chatID string, file *os.Fi
 		return fmt.Errorf("feishu file send: %w", err)
 	}
 	if !resp.Success() {
+		c.invalidateTokenOnAuthError(resp.Code)
 		return fmt.Errorf("feishu file send api error (code=%d msg=%s)", resp.Code, resp.Msg)
 	}
 	return nil
@@ -829,4 +855,15 @@ func extractFeishuSenderID(sender *larkim.EventSender) string {
 	}
 
 	return ""
+}
+
+// invalidateTokenOnAuthError clears the cached tenant_access_token when the
+// Feishu API reports it as invalid (99991663), so the next request fetches a
+// fresh one. The Lark SDK's built-in retry does not clear the cache, causing
+// all API calls to fail until the token naturally expires (~2 hours).
+func (c *FeishuChannel) invalidateTokenOnAuthError(code int) {
+	if code == errCodeTenantTokenInvalid {
+		c.tokenCache.InvalidateAll()
+		logger.WarnCF("feishu", "Invalidated cached token due to auth error", nil)
+	}
 }
