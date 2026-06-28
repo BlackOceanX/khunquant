@@ -3,7 +3,6 @@
 package tools
 
 import (
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
