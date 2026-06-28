@@ -21,7 +21,13 @@ const (
 	antigravityDefaultModel = "gemini-3-flash"
 	antigravityUserAgent    = "antigravity"
 	antigravityXGoogClient  = "google-cloud-sdk vscode_cloudshelleditor/0.1"
-	antigravityVersion      = "1.15.8"
+	// antigravityVersion is sent in the User-Agent (antigravity/<version>) and is
+	// the value Google's Cloud Code Assist backend uses to gate clients. When it
+	// falls below the server's minimum, the backend does NOT return an HTTP error
+	// — it returns 200 with the model "reply" replaced by "This version of
+	// Antigravity is no longer supported. Please upgrade...". Bump this to a
+	// current Antigravity release when that message starts appearing.
+	antigravityVersion = "2.2.1"
 )
 
 // AntigravityProvider implements LLMProvider using Google's Cloud Code Assist (Antigravity) API.

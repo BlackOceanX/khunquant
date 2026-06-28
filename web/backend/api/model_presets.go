@@ -11,7 +11,7 @@ package api
 //   anthropic/    → Anthropic API
 //   antigravity/  → Google Antigravity (cloudcode-pa.googleapis.com)
 //
-// Last verified: 2026-06-14
+// Last verified: 2026-06-28
 // ─────────────────────────────────────────────────────────────────────────────
 
 // oauthProviderModelPresets defines the clickable model chips shown on each
@@ -46,18 +46,29 @@ var oauthProviderModelPresets = map[string][]oauthModelPreset{
 	},
 
 	// ── Google Antigravity ────────────────────────────────────────────────────
-	// Model IDs come from the Cloud Code Assist v1internal API (Antigravity quota).
-	// Source: github.com/NoeFabris/opencode-antigravity-auth README (2026-06-14)
-	// The provider strips the "antigravity/" prefix before calling the API.
-	// Note: gemini-3-flash-preview is a Gemini CLI quota model (different API) — NOT valid here.
-	// Note: gemini-3.1-pro uses dot notation (rollout-dependent; may be unavailable on some accounts).
-	// Claude models (claude-sonnet-4-6, claude-opus-4-6-thinking) also route through Antigravity quota.
+	// Model IDs MUST match what v1internal:fetchAvailableModels returns for the
+	// account — the backend 404s ("NOT_FOUND: Requested entity was not found")
+	// on any ID it doesn't expose. The provider strips the "antigravity/" prefix.
+	// Labels mirror the Antigravity app's model picker; the IDs are the API IDs
+	// (the API's displayName differs from the ID, e.g. id gemini-3.5-flash-low →
+	// "Gemini 3.5 Flash (Medium)"). All entries verified live (2026-06-28) with a
+	// tool-laden request — each returns a real tool call, not just a ping.
+	// Gotchas: bare "gemini-3-pro"/"gemini-3.1-pro" do NOT exist (404); the High
+	// Pro tier works via "gemini-pro-agent" — the literal "gemini-3.1-pro-high" ID
+	// returns INVALID_ARGUMENT via this code path. gemini-3-flash-preview is a
+	// Gemini CLI quota model (different API) — NOT valid here.
+	// Note: the exact ID set is rollout-dependent. If a chip 404s, re-check with
+	// fetchAvailableModels for the account and update the IDs here.
 	oauthProviderGoogleAntigravity: {
 		{Label: "Gemini 3 Flash", ModelID: "antigravity/gemini-3-flash"},
-		{Label: "Gemini 3 Pro", ModelID: "antigravity/gemini-3-pro"},
-		{Label: "Gemini 3.1 Pro", ModelID: "antigravity/gemini-3.1-pro"},
-		{Label: "Claude Sonnet 4.6", ModelID: "antigravity/claude-sonnet-4-6"},
-		{Label: "Claude Opus 4.6 Thinking", ModelID: "antigravity/claude-opus-4-6-thinking"},
+		{Label: "Gemini 3.5 Flash (Medium)", ModelID: "antigravity/gemini-3.5-flash-low"},
+		{Label: "Gemini 3.5 Flash (High)", ModelID: "antigravity/gemini-3-flash-agent"},
+		{Label: "Gemini 3.5 Flash (Low)", ModelID: "antigravity/gemini-3.5-flash-extra-low"},
+		{Label: "Gemini 3.1 Pro (High)", ModelID: "antigravity/gemini-pro-agent"},
+		{Label: "Gemini 3.1 Pro (Low)", ModelID: "antigravity/gemini-3.1-pro-low"},
+		{Label: "Claude Sonnet 4.6 (Thinking)", ModelID: "antigravity/claude-sonnet-4-6"},
+		{Label: "Claude Opus 4.6 (Thinking)", ModelID: "antigravity/claude-opus-4-6-thinking"},
+		{Label: "GPT-OSS 120B (Medium)", ModelID: "antigravity/gpt-oss-120b-medium"},
 	},
 }
 
