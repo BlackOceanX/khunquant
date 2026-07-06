@@ -22,6 +22,7 @@ func (h *Handler) registerPicoRoutes(mux *http.ServeMux) {
 	// WebSocket proxy: forward /pico/ws to gateway
 	// This allows the frontend to connect via the same port as the web UI,
 	// avoiding the need to expose extra ports for WebSocket communication.
+	// SessionAuth middleware gates this path with launcher token (see middleware/auth.go apiRequiresAuth).
 	wsProxy := h.createWsProxy()
 	mux.HandleFunc("GET /pico/ws", h.handleWebSocketProxy(wsProxy))
 }

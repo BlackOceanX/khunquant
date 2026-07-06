@@ -45,8 +45,8 @@ func TestHandleUpdateConfig_PreservesExecAllowRemoteDefaultWhenOmitted(t *testin
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	if !cfg.Tools.Exec.AllowRemote {
-		t.Fatal("tools.exec.allow_remote should remain true when omitted from PUT /api/config")
+	if cfg.Tools.Exec.AllowRemote {
+		t.Fatal("tools.exec.allow_remote should default to false when omitted from PUT /api/config")
 	}
 }
 

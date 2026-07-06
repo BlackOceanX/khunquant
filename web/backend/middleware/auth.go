@@ -56,6 +56,10 @@ func SessionAuth(secret string, next http.Handler) http.Handler {
 }
 
 func apiRequiresAuth(r *http.Request) bool {
+	// Agent WebSocket requires launcher token (H2 defense-in-depth).
+	if r.URL.Path == "/pico/ws" {
+		return true
+	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") {
 		return false
 	}
@@ -123,6 +127,6 @@ func issueSessionCookie(w http.ResponseWriter, r *http.Request, secret string) {
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
-		Expires:  time.Now().Add(365 * 24 * time.Hour),
+		Expires:  time.Now().Add(7 * 24 * time.Hour),
 	})
 }

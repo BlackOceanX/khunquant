@@ -74,3 +74,34 @@ func TestSessionAuth_LoopbackSameOriginStillAutoAuths(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
+
+func TestSessionAuth_PicoWebSocketRequiresToken(t *testing.T) {
+	h := SessionAuth("secret-token", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/pico/ws", nil)
+	req.RemoteAddr = "192.168.1.9:1234"
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d (unauthenticated /pico/ws should be denied)", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestSessionAuth_PicoWebSocketWithTokenAllows(t *testing.T) {
+	h := SessionAuth("secret-token", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/pico/ws", nil)
+	req.RemoteAddr = "192.168.1.9:1234"
+	req.Header.Set("Authorization", "Bearer secret-token")
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (token bearer should be allowed)", rec.Code, http.StatusOK)
+	}
+}

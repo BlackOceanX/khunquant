@@ -420,7 +420,7 @@ func DefaultConfig() *Config {
 					Enabled: true,
 				},
 				EnableDenyPatterns: true,
-				AllowRemote:        true,
+				AllowRemote:        false,
 				TimeoutSeconds:     60,
 			},
 			Skills: SkillsToolsConfig{

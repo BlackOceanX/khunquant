@@ -170,10 +170,9 @@ func main() {
 	if effectivePublic {
 		if ip := utils.GetLocalIP(); ip != "" {
 			fmt.Printf("    >> http://%s:%s <<\n", ip, effectivePort)
-			fmt.Printf("    >> http://%s:%s/?launcher_token=%s <<\n", ip, effectivePort, launcherCfg.LauncherToken)
 		}
 		fmt.Println()
-		fmt.Printf("  Launcher token (required for LAN access): %s\n", launcherCfg.LauncherToken)
+		fmt.Println("  Launcher token is stored in root-only config; see launcher-config.json")
 	}
 	fmt.Println()
 
