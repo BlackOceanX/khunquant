@@ -484,11 +484,18 @@ func RefreshAccessToken(cred *AuthCredential, cfg OAuthProviderConfig) (*AuthCre
 		"client_id":     {cfg.ClientID},
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {cred.RefreshToken},
-		"scope":         {"openid profile email"},
 	}
 	if cfg.ClientSecret != "" {
 		data.Set("client_secret", cfg.ClientSecret)
 	}
+	// Do NOT send a narrowed `scope` on refresh. Per RFC 6749 §6, omitting it
+	// reissues the access token with the *originally granted* scopes. Google
+	// honors a narrower scope literally: sending "openid profile email" strips
+	// https://www.googleapis.com/auth/cloud-platform from the refreshed token,
+	// so the very next Cloud Code Assist (Antigravity) call fails with
+	// PERMISSION_DENIED "Request had insufficient authentication scopes" —
+	// which is why an Antigravity login only lasts until its first token
+	// refresh (~1h) and then requires re-authenticating.
 
 	tokenURL := cfg.Issuer + "/oauth/token"
 	if cfg.TokenURL != "" {
