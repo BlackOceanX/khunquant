@@ -37,7 +37,7 @@ func (t *GetPnLDetailTool) Parameters() map[string]any {
 		"properties": map[string]any{
 			"provider": map[string]any{
 				"type":        "string",
-				"description": "Exchange name (e.g. binance, bitkub, settrade).",
+				"description": "Exchange name (e.g. binance, bitkub, settrade, webull).",
 			},
 			"account": map[string]any{
 				"type":        "string",
@@ -103,6 +103,9 @@ func (t *GetPnLDetailTool) Execute(ctx context.Context, args map[string]any) *To
 
 	trades, err := tp.FetchMyTrades(ctx, symbol, since, limit)
 	if err != nil {
+		if hint := reauthHint(err, providerID, account); hint != nil {
+			return hint
+		}
 		return ErrorResult(fmt.Sprintf("get_pnl_detail: FetchMyTrades: %v", err)).WithError(err)
 	}
 

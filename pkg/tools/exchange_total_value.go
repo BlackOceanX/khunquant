@@ -8,6 +8,7 @@ import (
 
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
 	"github.com/cryptoquantumwave/khunquant/pkg/exchanges"
+	"github.com/cryptoquantumwave/khunquant/pkg/providers/broker"
 )
 
 // ExchangeTotalValueTool estimates the total portfolio value in a quote currency
@@ -33,7 +34,7 @@ func (t *ExchangeTotalValueTool) Parameters() map[string]any {
 			"exchange": map[string]any{
 				"type":        "string",
 				"description": "Exchange to query (default: \"binance\")",
-				"enum":        []string{"binance", "binanceth", "bitkub", "okx", "settrade"},
+				"enum":        []string{"binance", "binanceth", "bitkub", "okx", "settrade", "webull"},
 			},
 			"account": map[string]any{
 				"type":        "string",
@@ -76,86 +77,37 @@ func (t *ExchangeTotalValueTool) Execute(ctx context.Context, args map[string]an
 	return t.executeSingle(ctx, exchangeName, accountName, walletType, quote)
 }
 
-type accountRef struct {
-	exchange string
-	account  string
-}
-
-func (t *ExchangeTotalValueTool) enabledAccounts() []accountRef {
-	var refs []accountRef
-	ex := t.cfg.Exchanges
-
-	if ex.Binance.Enabled {
-		for i, acc := range ex.Binance.Accounts {
-			name := acc.Name
-			if name == "" {
-				name = fmt.Sprintf("%d", i+1)
-			}
-			refs = append(refs, accountRef{exchange: "binance", account: name})
-		}
-	}
-	if ex.BinanceTH.Enabled {
-		for i, acc := range ex.BinanceTH.Accounts {
-			name := acc.Name
-			if name == "" {
-				name = fmt.Sprintf("%d", i+1)
-			}
-			refs = append(refs, accountRef{exchange: "binanceth", account: name})
-		}
-	}
-	if ex.Bitkub.Enabled {
-		for i, acc := range ex.Bitkub.Accounts {
-			name := acc.Name
-			if name == "" {
-				name = fmt.Sprintf("%d", i+1)
-			}
-			refs = append(refs, accountRef{exchange: "bitkub", account: name})
-		}
-	}
-	if ex.OKX.Enabled {
-		for i, acc := range ex.OKX.Accounts {
-			name := acc.Name
-			if name == "" {
-				name = fmt.Sprintf("%d", i+1)
-			}
-			refs = append(refs, accountRef{exchange: "okx", account: name})
-		}
-	}
-	if ex.Settrade.Enabled {
-		for i, acc := range ex.Settrade.Accounts {
-			name := acc.Name
-			if name == "" {
-				name = fmt.Sprintf("%d", i+1)
-			}
-			refs = append(refs, accountRef{exchange: "settrade", account: name})
-		}
-	}
-	return refs
-}
-
 func (t *ExchangeTotalValueTool) executeAll(ctx context.Context, walletType, quote string) *ToolResult {
-	refs := t.enabledAccounts()
+	refs := broker.ListConfiguredAccounts(t.cfg)
 	if len(refs) == 0 {
 		return UserResult("No exchange accounts are configured.")
 	}
 
 	type lineItem struct {
-		label    string
-		value    float64
-		unpriced []string
-		err      string
+		label       string
+		value       float64
+		nativeQuote string // set when the subtotal could not be converted to quote
+		unpriced    []string
+		err         string
 	}
 
+	// Pass 1: create exchanges up front so every priced exchange can serve
+	// cross-rate lookups for the others.
+	type acctEx struct {
+		label      string
+		providerID string
+		account    string
+		pe         exchanges.PricedExchange
+	}
 	var lines []lineItem
-	var grandTotal float64
-
+	var acctExchanges []acctEx
 	for _, ref := range refs {
-		label := ref.exchange
-		if ref.account != "" {
-			label += " (" + ref.account + ")"
+		label := ref.ProviderID
+		if ref.Account != "" {
+			label += " (" + ref.Account + ")"
 		}
 
-		ex, err := exchanges.CreateExchangeForAccount(ref.exchange, ref.account, t.cfg)
+		ex, err := exchanges.CreateExchangeForAccount(ref.ProviderID, ref.Account, t.cfg)
 		if err != nil {
 			lines = append(lines, lineItem{label: label, err: err.Error()})
 			continue
@@ -165,10 +117,27 @@ func (t *ExchangeTotalValueTool) executeAll(ctx context.Context, walletType, quo
 			lines = append(lines, lineItem{label: label, err: "pricing not supported"})
 			continue
 		}
+		acctExchanges = append(acctExchanges, acctEx{label: label, providerID: ref.ProviderID, account: ref.Account, pe: pe})
+	}
 
-		balances, err := pe.GetWalletBalances(ctx, walletType)
+	// Pass 2: subtotal each account in its effective quote. An exchange that
+	// does not support the requested quote (e.g. USD-only Webull under the
+	// default USDT) is priced in its own quote and converted below.
+	type pendingLine struct {
+		item        lineItem
+		nativeQuote string
+	}
+	var pending []pendingLine
+	for _, ae := range acctExchanges {
+		eQuote := priceableQuote(ae.pe, quote)
+
+		balances, err := ae.pe.GetWalletBalances(ctx, walletType)
 		if err != nil {
-			lines = append(lines, lineItem{label: label, err: trimCCXTError(err)})
+			errMsg := reauthText(err, ae.providerID, ae.account)
+			if errMsg == "" {
+				errMsg = trimCCXTError(err)
+			}
+			lines = append(lines, lineItem{label: ae.label, err: errMsg})
 			continue
 		}
 
@@ -183,7 +152,7 @@ func (t *ExchangeTotalValueTool) executeAll(ctx context.Context, walletType, quo
 			if amount == 0 {
 				continue
 			}
-			price, err := pe.FetchPrice(ctx, asset, quote)
+			price, err := ae.pe.FetchPrice(ctx, asset, eQuote)
 			if err != nil {
 				unpriced = append(unpriced, asset)
 				continue
@@ -195,8 +164,48 @@ func (t *ExchangeTotalValueTool) executeAll(ctx context.Context, walletType, quo
 			}
 		}
 
-		grandTotal += subtotal
-		lines = append(lines, lineItem{label: label, value: subtotal, unpriced: unpriced})
+		pending = append(pending, pendingLine{
+			item:        lineItem{label: ae.label, value: subtotal, unpriced: unpriced},
+			nativeQuote: strings.ToUpper(eQuote),
+		})
+	}
+
+	// Pass 3: resolve conversion rates for native quotes ≠ requested quote.
+	// FetchPrice returning (0, nil) signals a 1:1 usd-like pair.
+	convRates := map[string]float64{quote: 1.0}
+	for _, pl := range pending {
+		if _, known := convRates[pl.nativeQuote]; known {
+			continue
+		}
+		if exchanges.USDLike(pl.nativeQuote) && exchanges.USDLike(quote) {
+			convRates[pl.nativeQuote] = 1.0
+			continue
+		}
+		for _, ae := range acctExchanges {
+			rate, err := ae.pe.FetchPrice(ctx, pl.nativeQuote, quote)
+			if err == nil {
+				if rate == 0 {
+					rate = 1.0
+				}
+				convRates[pl.nativeQuote] = rate
+				break
+			}
+		}
+	}
+
+	// Pass 4: convert subtotals into the requested quote and accumulate the
+	// grand total. Subtotals with no known rate stay in their native quote
+	// and are excluded from the total (flagged on their line).
+	var grandTotal float64
+	for _, pl := range pending {
+		li := pl.item
+		if rate, ok := convRates[pl.nativeQuote]; ok {
+			li.value *= rate
+			grandTotal += li.value
+		} else {
+			li.nativeQuote = pl.nativeQuote
+		}
+		lines = append(lines, li)
 	}
 
 	ts := time.Now().UTC().Format(time.RFC3339)
@@ -206,7 +215,14 @@ func (t *ExchangeTotalValueTool) executeAll(ctx context.Context, walletType, quo
 		if li.err != "" {
 			fmt.Fprintf(&sb, "  %-30s  ERROR: %s\n", li.label, li.err)
 		} else {
-			row := fmt.Sprintf("  %-30s  %10.2f %s", li.label, li.value, quote)
+			lineQuote := quote
+			if li.nativeQuote != "" {
+				lineQuote = li.nativeQuote
+			}
+			row := fmt.Sprintf("  %-30s  %10.2f %s", li.label, li.value, lineQuote)
+			if li.nativeQuote != "" {
+				row += fmt.Sprintf(" (no %s rate; excluded from total)", quote)
+			}
 			if len(li.unpriced) > 0 {
 				row += fmt.Sprintf(" (could not price: %s)", strings.Join(li.unpriced, ", "))
 			}
@@ -215,6 +231,26 @@ func (t *ExchangeTotalValueTool) executeAll(ctx context.Context, walletType, quo
 	}
 	fmt.Fprintf(&sb, "  %-30s  %10.2f %s\n", "TOTAL", grandTotal, quote)
 	return UserResult(sb.String())
+}
+
+// priceableQuote returns the quote currency to price assets in on pe: the
+// requested quote when supported, otherwise the exchange's first supported
+// quote (mirrors effectiveQuote in pkg/snapshot).
+func priceableQuote(pe exchanges.PricedExchange, requested string) string {
+	ql, ok := pe.(exchanges.QuoteLister)
+	if !ok {
+		return requested
+	}
+	supported := ql.SupportedQuotes()
+	for _, q := range supported {
+		if strings.EqualFold(q, requested) {
+			return requested
+		}
+	}
+	if len(supported) > 0 {
+		return supported[0]
+	}
+	return requested
 }
 
 func (t *ExchangeTotalValueTool) executeSingle(ctx context.Context, exchangeName, accountName, walletType, quote string) *ToolResult {
@@ -231,6 +267,9 @@ func (t *ExchangeTotalValueTool) executeSingle(ctx context.Context, exchangeName
 	// Probe that the quote currency is supported (skip for BTC since BTC/BTC is a self-pair returning 0).
 	if quote != "BTC" {
 		if _, err := pe.FetchPrice(ctx, "BTC", quote); err != nil {
+			if hint := reauthHint(err, exchangeName, accountName); hint != nil {
+				return hint
+			}
 			clean := trimCCXTError(err)
 			if isNetworkError(clean) {
 				return ErrorResult(fmt.Sprintf("Exchange %q is unreachable (network error): %s", exchangeName, clean))
@@ -246,6 +285,9 @@ func (t *ExchangeTotalValueTool) executeSingle(ctx context.Context, exchangeName
 	// Fetch all balances for the requested wallet scope.
 	balances, err := pe.GetWalletBalances(ctx, walletType)
 	if err != nil {
+		if hint := reauthHint(err, exchangeName, accountName); hint != nil {
+			return hint
+		}
 		return ErrorResult(fmt.Sprintf("get_total_value: fetch balances: %s", trimCCXTError(err)))
 	}
 

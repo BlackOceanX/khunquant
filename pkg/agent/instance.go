@@ -24,6 +24,7 @@ import (
 	_ "github.com/cryptoquantumwave/khunquant/pkg/exchanges/bitkub"
 	_ "github.com/cryptoquantumwave/khunquant/pkg/exchanges/okx"
 	_ "github.com/cryptoquantumwave/khunquant/pkg/exchanges/settrade"
+	_ "github.com/cryptoquantumwave/khunquant/pkg/exchanges/webull"
 )
 
 // AgentInstance represents a fully configured agent with its own workspace,
@@ -130,6 +131,9 @@ func NewAgentInstance(
 	if cfg.Tools.IsToolEnabled("list_portfolios") {
 		toolsRegistry.Register(tools.NewListPortfoliosTool(cfg))
 	}
+	if cfg.Tools.IsToolEnabled("webull_reconnect") {
+		toolsRegistry.Register(tools.NewWebullReconnectTool(cfg))
+	}
 	if cfg.Tools.IsToolEnabled("get_pnl_summary") {
 		toolsRegistry.Register(tools.NewGetPnLSummaryTool(cfg))
 	}
@@ -210,6 +214,24 @@ func NewAgentInstance(
 	if cfg.Tools.IsToolEnabled("get_order_rate_status") {
 		toolsRegistry.Register(tools.NewGetOrderRateStatusTool())
 	}
+
+	// Options tools (Track B3).
+	if cfg.Tools.IsToolEnabled("option_quote") {
+		toolsRegistry.Register(tools.NewOptionQuoteTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("option_create_order") {
+		toolsRegistry.Register(tools.NewOptionCreateOrderTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("option_cancel_order") {
+		toolsRegistry.Register(tools.NewOptionCancelOrderTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("option_get_order") {
+		toolsRegistry.Register(tools.NewOptionGetOrderTool(cfg))
+	}
+	if cfg.Tools.IsToolEnabled("option_open_orders") {
+		toolsRegistry.Register(tools.NewOptionOpenOrdersTool(cfg))
+	}
+
 	if cfg.Tools.IsToolEnabled("futures_set_leverage") {
 		toolsRegistry.Register(tools.NewFuturesSetLeverageTool(cfg))
 	}

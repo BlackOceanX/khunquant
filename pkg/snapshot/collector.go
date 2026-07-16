@@ -3,11 +3,13 @@ package snapshot
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cryptoquantumwave/khunquant/pkg/config"
 	"github.com/cryptoquantumwave/khunquant/pkg/exchanges"
+	"github.com/cryptoquantumwave/khunquant/pkg/providers/broker"
 )
 
 // CollectOptions controls which exchanges/accounts to snapshot.
@@ -180,6 +182,7 @@ func CollectFromExchanges(ctx context.Context, cfg *config.Config, opts CollectO
 				Quote:    eQuote,
 			}
 
+			priced := false
 			if canPrice {
 				price, err := pe.FetchPrice(ctx, b.Asset, eQuote)
 				if err == nil {
@@ -190,9 +193,21 @@ func CollectFromExchanges(ctx context.Context, cfg *config.Config, opts CollectO
 					} else {
 						pos.Value = qty * price
 					}
-				} else {
-					unpriced = append(unpriced, b.Asset)
+					priced = true
 				}
+			}
+			if !priced {
+				// Fall back to the provider's own valuation (e.g. Webull
+				// positions carry market_value even when live market data is
+				// unavailable or subscription-gated).
+				if mv, err := strconv.ParseFloat(b.Extra["market_value"], 64); err == nil && mv > 0 {
+					pos.Value = mv
+					pos.Price = mv / qty
+					priced = true
+				}
+			}
+			if !priced && canPrice {
+				unpriced = append(unpriced, b.Asset)
 			}
 
 			if b.Locked > 0 {
@@ -225,13 +240,25 @@ func CollectFromExchanges(ctx context.Context, cfg *config.Config, opts CollectO
 		if _, known := convRates[pp.nativeQuote]; known {
 			continue
 		}
+		// USD and USD stablecoins are 1:1 — this needs no exchange, so a
+		// USD-only broker (e.g. Webull) converts even when it is the sole
+		// configured account.
+		if exchanges.USDLike(pp.nativeQuote) && exchanges.USDLike(quote) {
+			convRates[pp.nativeQuote] = 1.0
+			continue
+		}
 		for _, ae := range acctExchanges {
 			pe, ok := ae.ex.(exchanges.PricedExchange)
 			if !ok {
 				continue
 			}
 			rate, err := pe.FetchPrice(ctx, pp.nativeQuote, quote)
-			if err == nil && rate > 0 {
+			if err == nil {
+				if rate == 0 {
+					// FetchPrice returns 0 to signal the asset IS the quote
+					// currency (or a 1:1 usd-like pair, e.g. USD→USDT).
+					rate = 1.0
+				}
 				convRates[pp.nativeQuote] = rate
 				break
 			}
@@ -275,35 +302,11 @@ func effectiveQuote(ex exchanges.Exchange, requestedQuote string) string {
 
 // listExchangeAccounts returns all configured exchange/account pairs from config.
 func listExchangeAccounts(cfg *config.Config) []exchangeAccount {
-	var result []exchangeAccount
-	ex := cfg.Exchanges
-
-	if ex.Binance.Enabled {
-		for _, acc := range ex.Binance.Accounts {
-			result = append(result, exchangeAccount{"binance", acc.Name})
-		}
+	refs := broker.ListConfiguredAccounts(cfg)
+	result := make([]exchangeAccount, len(refs))
+	for i, ref := range refs {
+		result[i] = exchangeAccount{ref.ProviderID, ref.Account}
 	}
-	if ex.BinanceTH.Enabled {
-		for _, acc := range ex.BinanceTH.Accounts {
-			result = append(result, exchangeAccount{"binanceth", acc.Name})
-		}
-	}
-	if ex.Bitkub.Enabled {
-		for _, acc := range ex.Bitkub.Accounts {
-			result = append(result, exchangeAccount{"bitkub", acc.Name})
-		}
-	}
-	if ex.OKX.Enabled {
-		for _, acc := range ex.OKX.Accounts {
-			result = append(result, exchangeAccount{"okx", acc.Name})
-		}
-	}
-	if ex.Settrade.Enabled {
-		for _, acc := range ex.Settrade.Accounts {
-			result = append(result, exchangeAccount{"settrade", acc.Name})
-		}
-	}
-
 	return result
 }
 

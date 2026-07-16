@@ -5,6 +5,8 @@ package broker
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	ccxt "github.com/ccxt/ccxt/go/v4"
 )
@@ -228,4 +230,160 @@ type WalletBalance struct {
 	Balance
 	WalletType string
 	Extra      map[string]string
+}
+
+// --- Options (Market Data + Trading) ---
+
+// OptionContract represents a single options contract specification.
+type OptionContract struct {
+	Underlying string // e.g. "AAPL"
+	Expiry     string // yyyy-MM-dd format
+	Strike     float64
+	OptionType string // CALL or PUT
+}
+
+// OptionQuote represents the quote data for an options contract.
+// Includes price, greeks, and open interest.
+type OptionQuote struct {
+	Contract    OptionContract
+	Symbol      string // Encoded symbol (e.g. AAPL260821C00320000)
+	Price       float64
+	Bid         float64
+	Ask         float64
+	BidSize     float64
+	AskSize     float64
+	Open        float64
+	High        float64
+	Low         float64
+	PreClose    float64
+	Change      float64
+	ChangeRatio float64
+	// Greeks
+	Delta        float64
+	Gamma        float64
+	Theta        float64
+	Vega         float64
+	Rho          float64
+	ImpVol       float64 // Implied Volatility
+	Volume       float64
+	OpenInterest float64
+	StrikePrice  float64
+	Timestamp    int64 // Unix milliseconds
+}
+
+// OptionLeg represents a single leg in an options order.
+type OptionLeg struct {
+	Side       string // buy or sell
+	Quantity   float64
+	Underlying string
+	Strike     float64
+	Expiry     string // yyyy-MM-dd
+	OptionType string // CALL or PUT
+}
+
+// OptionOrderRequest represents an options order placement request.
+type OptionOrderRequest struct {
+	Underlying  string // e.g. "AAPL"
+	Strategy    string // SINGLE for now (VERTICAL, STRADDLE, etc. deferred)
+	OrderType   string // limit, stop_loss, stop_loss_limit
+	Side        string // buy or sell
+	Quantity    float64
+	LimitPrice  *float64
+	StopPrice   *float64
+	TimeInForce string // DAY or GTC
+	Legs        []OptionLeg
+}
+
+// Validate checks a single-leg option order request for shape correctness:
+// strategy, order type + required prices (rejecting MARKET/TAKE_PROFIT), side,
+// time-in-force (GTC not allowed on SELL), exactly one leg, and leg side /
+// option type. It is the single source of option request-shape validation shared
+// by the option tool layer and provider adapters. It does NOT enforce policy
+// gates (permissions, risk, confirmation) — those remain in the tool layer.
+func (r OptionOrderRequest) Validate() error {
+	strategy := r.Strategy
+	if strategy == "" {
+		strategy = "SINGLE"
+	}
+	if strategy != "SINGLE" {
+		return fmt.Errorf("only single-leg options orders are supported (got strategy %q)", strategy)
+	}
+
+	orderType := strings.ToUpper(r.OrderType)
+	switch orderType {
+	case "LIMIT":
+		if r.LimitPrice == nil {
+			return fmt.Errorf("limit_price is required for LIMIT option orders")
+		}
+	case "STOP_LOSS":
+		if r.StopPrice == nil {
+			return fmt.Errorf("stop_price is required for STOP_LOSS option orders")
+		}
+	case "STOP_LOSS_LIMIT":
+		if r.LimitPrice == nil || r.StopPrice == nil {
+			return fmt.Errorf("both limit_price and stop_price are required for STOP_LOSS_LIMIT option orders")
+		}
+	case "MARKET", "TAKE_PROFIT":
+		return fmt.Errorf("order type %q is not supported for options (use LIMIT, STOP_LOSS, or STOP_LOSS_LIMIT)", orderType)
+	default:
+		return fmt.Errorf("unsupported option order type %q", r.OrderType)
+	}
+
+	side := strings.ToUpper(r.Side)
+	if side != "BUY" && side != "SELL" {
+		return fmt.Errorf("unknown option order side %q (must be BUY or SELL)", r.Side)
+	}
+
+	tif := strings.ToUpper(r.TimeInForce)
+	if tif != "DAY" && tif != "GTC" {
+		return fmt.Errorf("unsupported time_in_force %q for options (use DAY or GTC)", r.TimeInForce)
+	}
+	if side == "SELL" && tif == "GTC" {
+		return fmt.Errorf("GTC (Good-Till-Cancel) is not allowed on SELL orders (use DAY)")
+	}
+
+	if len(r.Legs) != 1 {
+		return fmt.Errorf("exactly one leg is required for single-leg orders (got %d)", len(r.Legs))
+	}
+	leg := r.Legs[0]
+	if s := strings.ToUpper(leg.Side); s != "BUY" && s != "SELL" {
+		return fmt.Errorf("invalid leg side %q", leg.Side)
+	}
+	if ot := strings.ToUpper(leg.OptionType); ot != "CALL" && ot != "PUT" {
+		return fmt.Errorf("invalid option type %q (must be CALL or PUT)", leg.OptionType)
+	}
+	return nil
+}
+
+// OptionMarketDataProvider extends Provider with options market data.
+type OptionMarketDataProvider interface {
+	Provider
+
+	// FetchOptionSnapshot returns quotes for multiple option contracts.
+	FetchOptionSnapshot(ctx context.Context, contracts []OptionContract) ([]OptionQuote, error)
+
+	// FetchOptionOHLCV returns candlestick data for an options contract.
+	// timeframe: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w (CCXT unified format)
+	FetchOptionOHLCV(ctx context.Context, contract OptionContract, timeframe string, limit int) ([]ccxt.OHLCV, error)
+}
+
+// OptionTradingProvider extends Provider with options order management.
+//
+// Symbol convention: every ccxt.Order returned by this interface uses the
+// OCC-encoded contract symbol (e.g. "AAPL260821C00320000") as ccxt.Order.Symbol,
+// not the bare underlying or a "BASE/USD" pair. Order.Id is the client_order_id.
+type OptionTradingProvider interface {
+	Provider
+
+	// PlaceOptionOrder submits a new options order.
+	PlaceOptionOrder(ctx context.Context, req OptionOrderRequest) (ccxt.Order, error)
+
+	// CancelOptionOrder cancels an open options order by client_order_id.
+	CancelOptionOrder(ctx context.Context, clientOrderID string) (ccxt.Order, error)
+
+	// FetchOptionOrder retrieves a single options order by client_order_id.
+	FetchOptionOrder(ctx context.Context, clientOrderID string) (ccxt.Order, error)
+
+	// FetchOpenOptionOrders returns all open options orders.
+	FetchOpenOptionOrders(ctx context.Context) ([]ccxt.Order, error)
 }
