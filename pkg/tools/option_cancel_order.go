@@ -53,6 +53,11 @@ func (t *OptionCancelOrderTool) Execute(ctx context.Context, args map[string]any
 	if !ok {
 		return ErrorResult(fmt.Sprintf("provider %q does not support option order cancellation", providerID))
 	}
+	if unavail, ok := p.(broker.OptionOrderingUnavailable); ok {
+		if reason := unavail.OptionOrderingUnavailableReason(); reason != "" {
+			return ErrorResult(reason)
+		}
+	}
 
 	order, err := opt.CancelOptionOrder(ctx, id)
 	if err != nil {

@@ -175,6 +175,11 @@ func (t *OptionCreateOrderTool) Execute(ctx context.Context, args map[string]any
 	if !ok {
 		return ErrorResult(fmt.Sprintf("provider %q does not support option order execution", providerID))
 	}
+	if unavail, ok := p.(broker.OptionOrderingUnavailable); ok {
+		if reason := unavail.OptionOrderingUnavailableReason(); reason != "" {
+			return ErrorResult(reason)
+		}
+	}
 
 	// --- Gate 3: market status ---
 	status, err := p.GetMarketStatus(ctx, underlying)

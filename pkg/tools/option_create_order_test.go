@@ -426,6 +426,44 @@ func TestOptionCreateOrderTool_Execute_LiveProviderNotRegistered(t *testing.T) {
 	}
 }
 
+// optionOrderingUnavailableStub wraps optionCreateOrderFullStub and reports
+// option ordering as unavailable, mirroring the Webull TH-region block so the
+// tool-layer check (which must fire before PlaceOptionOrder, including on the
+// confirm=false dry-run path) can be tested without a real Webull adapter.
+type optionOrderingUnavailableStub struct {
+	optionCreateOrderFullStub
+	reason string
+}
+
+func (s optionOrderingUnavailableStub) OptionOrderingUnavailableReason() string { return s.reason }
+
+var _ broker.OptionOrderingUnavailable = optionOrderingUnavailableStub{}
+
+func TestOptionCreateOrderTool_Execute_BlockedByOptionOrderingUnavailable(t *testing.T) {
+	const provider = "opt-create-ordering-unavailable"
+	broker.RegisterFactory(provider, func(*config.Config) (broker.Provider, error) {
+		return optionOrderingUnavailableStub{
+			optionCreateOrderFullStub: optionCreateOrderFullStub{
+				balances: []broker.Balance{{Asset: "USD", Free: 1_000_000}},
+				placeErr: fmt.Errorf("PlaceOptionOrder should never be reached when blocked"),
+			},
+			reason: "webull: option order placement/cancellation is not currently available for Webull Thailand accounts",
+		}, nil
+	})
+
+	cfg := &config.Config{TradingRisk: config.TradingRiskConfig{PaperTradingMode: false}}
+	tool := NewOptionCreateOrderTool(cfg)
+
+	for _, confirm := range []bool{false, true} {
+		t.Run(fmt.Sprintf("confirm=%v", confirm), func(t *testing.T) {
+			result := tool.Execute(context.Background(), liveOptionOrderArgs(provider, confirm))
+			if !result.IsError {
+				t.Fatalf("expected the option-ordering-unavailable reason to be reported (confirm=%v), got success: %s", confirm, result.ForLLM)
+			}
+		})
+	}
+}
+
 func TestOptionCreateOrderTool_Execute_LiveWrongProviderType(t *testing.T) {
 	const provider = "opt-create-live-non-trading"
 	broker.RegisterFactory(provider, func(*config.Config) (broker.Provider, error) {

@@ -21,6 +21,31 @@ type webullAdapter struct {
 	cfg    config.WebullExchangeAccount
 }
 
+// optionOrderingBlockedRegion is the Webull region confirmed (2026-07-17, via Webull
+// Thailand support) to not support option order placement/cancellation through the
+// OpenAPI yet. Scoped to this region only — no evidence other regions are affected.
+// TODO(webull-options): remove this guard once Webull Thailand ships API support for
+// option order execution.
+const optionOrderingBlockedRegion = "th"
+
+// optionOrderingUnavailableReason returns a human-readable reason option order
+// placement/cancellation is unavailable for this account's region, or "" if available.
+func (a *webullAdapter) optionOrderingUnavailableReason() string {
+	if !strings.EqualFold(a.cfg.Region, optionOrderingBlockedRegion) {
+		return ""
+	}
+	return "webull: option order placement/cancellation is not currently available for Webull Thailand accounts " +
+		"(confirmed with Webull Thailand support — the option trading API is not enabled yet for this region). " +
+		"Option quotes and order queries (option_quote, option_get_order, option_open_orders) are unaffected."
+}
+
+// OptionOrderingUnavailableReason implements broker.OptionOrderingUnavailable, letting
+// callers (e.g. the option_create_order/option_cancel_order tools) detect the block
+// before attempting a dry-run or a real order.
+func (a *webullAdapter) OptionOrderingUnavailableReason() string {
+	return a.optionOrderingUnavailableReason()
+}
+
 // adapterCache memoizes webullAdapter (and its underlying Client/token session)
 // per account name. Webull's login session requires periodic in-app approval and
 // is rate-limited on repeated token/create calls, so every entry point that can
@@ -955,6 +980,10 @@ func (a *webullAdapter) FetchMyTrades(_ context.Context, _ string, _ *int64, _ i
 // PlaceOptionOrder submits a new single-leg options order.
 // Validates order type, side, TIF, and enforces single-leg constraint.
 func (a *webullAdapter) PlaceOptionOrder(ctx context.Context, req broker.OptionOrderRequest) (ccxt.Order, error) {
+	if reason := a.optionOrderingUnavailableReason(); reason != "" {
+		return ccxt.Order{}, fmt.Errorf("%s", reason)
+	}
+
 	// Validate request shape (strategy, order type, side, TIF, single leg).
 	if err := req.Validate(); err != nil {
 		return ccxt.Order{}, fmt.Errorf("webull: %w", err)
@@ -1062,6 +1091,10 @@ func (a *webullAdapter) PlaceOptionOrder(ctx context.Context, req broker.OptionO
 
 // CancelOptionOrder cancels an open options order by client_order_id.
 func (a *webullAdapter) CancelOptionOrder(ctx context.Context, clientOrderID string) (ccxt.Order, error) {
+	if reason := a.optionOrderingUnavailableReason(); reason != "" {
+		return ccxt.Order{}, fmt.Errorf("%s", reason)
+	}
+
 	o, err := a.cancelByClientOrderID(ctx, clientOrderID)
 	if err != nil {
 		return ccxt.Order{}, fmt.Errorf("webull: CancelOptionOrder %s: %w", clientOrderID, err)

@@ -144,6 +144,41 @@ func TestOptionCancelOrderTool_Execute_SuccessNilStatus(t *testing.T) {
 	}
 }
 
+// optionCancelOrderingUnavailableStub wraps optionCancelStubProvider and
+// reports option ordering as unavailable, mirroring the Webull TH-region
+// block so the tool-layer check can be tested without a real Webull adapter.
+type optionCancelOrderingUnavailableStub struct {
+	optionCancelStubProvider
+	reason string
+}
+
+func (p optionCancelOrderingUnavailableStub) OptionOrderingUnavailableReason() string {
+	return p.reason
+}
+
+var _ broker.OptionOrderingUnavailable = optionCancelOrderingUnavailableStub{}
+
+func TestOptionCancelOrderTool_Execute_BlockedByOptionOrderingUnavailable(t *testing.T) {
+	const provider = "opt-cancel-ordering-unavailable"
+	broker.RegisterFactory(provider, func(*config.Config) (broker.Provider, error) {
+		return optionCancelOrderingUnavailableStub{
+			optionCancelStubProvider: optionCancelStubProvider{
+				err: errors.New("CancelOptionOrder should never be reached when blocked"),
+			},
+			reason: "webull: option order placement/cancellation is not currently available for Webull Thailand accounts",
+		}, nil
+	})
+
+	tool := NewOptionCancelOrderTool(config.DefaultConfig())
+	result := tool.Execute(context.Background(), map[string]any{
+		"provider": provider,
+		"id":       "kq123",
+	})
+	if !result.IsError {
+		t.Fatalf("expected the option-ordering-unavailable reason to be reported, got success: %s", result.ForLLM)
+	}
+}
+
 func TestOptionCancelOrderTool_Execute_UpstreamError(t *testing.T) {
 	const provider = "opt-cancel-error"
 	broker.RegisterFactory(provider, func(*config.Config) (broker.Provider, error) {

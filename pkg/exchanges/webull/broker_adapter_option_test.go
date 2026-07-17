@@ -366,16 +366,96 @@ func TestFetchPrice_OCCOptionSymbol_NoData(t *testing.T) {
 // creds, matching the newTestClient pattern in client_test.go.
 func newOptionTestAdapter(t *testing.T, server *httptest.Server) *webullAdapter {
 	t.Helper()
+	return newOptionTestAdapterWithRegion(t, server, "")
+}
+
+// newOptionTestAdapterWithRegion is like newOptionTestAdapter but lets tests
+// control cfg.Region, needed to exercise the TH option-ordering block.
+func newOptionTestAdapterWithRegion(t *testing.T, server *httptest.Server, region string) *webullAdapter {
+	t.Helper()
 	cfg := config.WebullExchangeAccount{
 		ExchangeAccount: config.ExchangeAccount{
 			APIKey: *config.NewSecureString("test-app-key"),
 			Secret: *config.NewSecureString("test-app-secret"),
 		},
 		AccountID: "ACC123",
+		Region:    region,
 	}
 	client, err := NewClient(cfg, WithBaseURL(server.URL), WithHTTPClient(server.Client()))
 	if err != nil {
 		t.Fatalf("NewClient failed: %v", err)
 	}
 	return &webullAdapter{client: client, cfg: cfg}
+}
+
+// TestPlaceOptionOrder_BlockedForTHRegion verifies option order placement is
+// rejected immediately (no HTTP call) for Webull Thailand accounts, per the
+// confirmed-with-Webull-support TH option-ordering gap, while other regions
+// (and the empty/default region) are unaffected.
+func TestPlaceOptionOrder_BlockedForTHRegion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == endpointOrderPlace {
+			t.Fatal("PlaceOrder should not be called when option ordering is blocked for this region")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(TokenResponse{Token: "test-token", Expires: 9999999999999, Status: "NORMAL"})
+	}))
+	defer server.Close()
+
+	adapter := newOptionTestAdapterWithRegion(t, server, "th")
+	if _, err := adapter.PlaceOptionOrder(context.Background(), validOptionOrderRequest()); err == nil {
+		t.Fatal("expected option ordering to be blocked for the th region")
+	}
+
+	if reason := adapter.OptionOrderingUnavailableReason(); reason == "" {
+		t.Error("expected OptionOrderingUnavailableReason to report the block for th region")
+	}
+}
+
+// TestPlaceOptionOrder_NotBlockedForOtherRegions verifies the TH-only guard
+// doesn't affect other regions (only TH is confirmed broken by Webull support).
+func TestPlaceOptionOrder_NotBlockedForOtherRegions(t *testing.T) {
+	for _, region := range []string{"", "us"} {
+		t.Run(region, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				switch r.URL.Path {
+				case endpointTokenCreate:
+					json.NewEncoder(w).Encode(TokenResponse{Token: "test-token", Expires: 9999999999999, Status: "NORMAL"})
+				case endpointOrderPlace:
+					json.NewEncoder(w).Encode(PlaceOrderResponse{ClientOrderID: "kq-option-order-1", OrderID: "1234567890"})
+				}
+			}))
+			defer server.Close()
+
+			adapter := newOptionTestAdapterWithRegion(t, server, region)
+			if _, err := adapter.PlaceOptionOrder(context.Background(), validOptionOrderRequest()); err != nil {
+				t.Fatalf("PlaceOptionOrder failed for region %q: %v", region, err)
+			}
+			if reason := adapter.OptionOrderingUnavailableReason(); reason != "" {
+				t.Errorf("expected no block for region %q, got %q", region, reason)
+			}
+		})
+	}
+}
+
+// TestCancelOptionOrder_BlockedForTHRegion mirrors the PlaceOptionOrder block
+// test for CancelOptionOrder, which shares the same TH-region guard.
+func TestCancelOptionOrder_BlockedForTHRegion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == endpointOrderCancel {
+			t.Fatal("CancelOrder should not be called when option ordering is blocked for this region")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(TokenResponse{Token: "test-token", Expires: 9999999999999, Status: "NORMAL"})
+	}))
+	defer server.Close()
+
+	adapter := newOptionTestAdapterWithRegion(t, server, "th")
+	if _, err := adapter.CancelOptionOrder(context.Background(), "kq-cancel-1"); err == nil {
+		t.Fatal("expected option cancellation to be blocked for the th region")
+	}
 }

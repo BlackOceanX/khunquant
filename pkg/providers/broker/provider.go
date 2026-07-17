@@ -387,3 +387,12 @@ type OptionTradingProvider interface {
 	// FetchOpenOptionOrders returns all open options orders.
 	FetchOpenOptionOrders(ctx context.Context) ([]ccxt.Order, error)
 }
+
+// OptionOrderingUnavailable is an optional capability a Provider may implement to report
+// that option order execution is temporarily unavailable (e.g. a broker-side rollout gap),
+// distinct from CheckPermission's account-level scope gating. Tools should check this
+// before generating a dry-run preview, not just before executing.
+type OptionOrderingUnavailable interface {
+	// OptionOrderingUnavailableReason returns a human-readable reason, or "" if available.
+	OptionOrderingUnavailableReason() string
+}
