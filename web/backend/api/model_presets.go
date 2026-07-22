@@ -60,14 +60,14 @@ var oauthProviderModelPresets = map[string][]oauthModelPreset{
 	// Note: the exact ID set is rollout-dependent. If a chip 404s, re-check with
 	// fetchAvailableModels for the account and update the IDs here.
 	//
-	// Gemini 3.6 Flash tiers added 2026-07-22 (app added them to its picker) but
-	// NOT live-verified against fetchAvailableModels yet — IDs are a best guess
-	// following the 3.5 tier's naming/reuse pattern above. Re-check and fix if
-	// any of these three 404 in the app.
+	// Gemini 3.6 Flash added 2026-07-22 (Google GA'd it 2026-07-21; spotted in
+	// Antigravity's own tieredModelIds config as a single ID, unlike 3.5 which
+	// exposes separate -low/-extra-low/-agent IDs per tier). "Flash" replaces
+	// 3.5 as Antigravity's tiered "flash" family; there is only one ID here —
+	// thinking effort is controlled server-side/internally, not via separate
+	// High/Medium/Low model IDs, so we only list one chip for it.
 	oauthProviderGoogleAntigravity: {
-		{Label: "Gemini 3.6 Flash (High)", ModelID: "antigravity/gemini-3.5-flash-agent"},
-		{Label: "Gemini 3.6 Flash (Medium)", ModelID: "antigravity/gemini-3.6-flash-low"},
-		{Label: "Gemini 3.6 Flash (Low)", ModelID: "antigravity/gemini-3.6-flash-extra-low"},
+		{Label: "Gemini 3.6 Flash", ModelID: "antigravity/gemini-3.6-flash-tiered"},
 		{Label: "Gemini 3 Flash", ModelID: "antigravity/gemini-3-flash"},
 		{Label: "Gemini 3.5 Flash (Medium)", ModelID: "antigravity/gemini-3.5-flash-low"},
 		{Label: "Gemini 3.5 Flash (High)", ModelID: "antigravity/gemini-3-flash-agent"},
