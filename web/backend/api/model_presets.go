@@ -24,23 +24,28 @@ package api
 //	Antigravity: github.com/NoeFabris/opencode-antigravity-auth (PR #574)
 var oauthProviderModelPresets = map[string][]oauthModelPreset{
 	// ── OpenAI ────────────────────────────────────────────────────────────────
-	// gpt-5.5  = current default for ChatGPT-authenticated Codex CLI sessions
-	// gpt-5.4  = stable fallback
-	// gpt-5.4-mini = lighter tasks, subagents, interactive edits
+	// GPT-5.6 GA'd 2026-07-09 as three named tiers (Sol/Terra/Luna), replacing
+	// the flat 5.5/5.4/5.4-mini lineup below them. Bare "gpt-5.6" aliases to
+	// Sol, but we use the explicit tier IDs for clarity, matching the old
+	// "-mini" suffix style.
+	// gpt-5.6-sol   = flagship / frontier reasoning, Codex CLI default, $5/$30 per MTok
+	// gpt-5.6-terra = balanced intelligence/cost, $2.50/$15 per MTok
+	// gpt-5.6-luna  = fast, cheap, high-volume, $1/$6 per MTok
 	oauthProviderOpenAI: {
-		{Label: "GPT-5.5", ModelID: "openai/gpt-5.5"},
-		{Label: "GPT-5.4", ModelID: "openai/gpt-5.4"},
-		{Label: "GPT-5.4 Mini", ModelID: "openai/gpt-5.4-mini"},
+		{Label: "GPT-5.6 Sol", ModelID: "openai/gpt-5.6-sol"},
+		{Label: "GPT-5.6 Terra", ModelID: "openai/gpt-5.6-terra"},
+		{Label: "GPT-5.6 Luna", ModelID: "openai/gpt-5.6-luna"},
 	},
 
 	// ── Anthropic ─────────────────────────────────────────────────────────────
 	// claude-fable-5   = Mythos class, released 2026-06-09 (top tier, $10/$50/MTok)
-	// claude-sonnet-4.6 = recommended production default ($3/$15/MTok)
+	// claude-sonnet-5  = recommended production default, replaces Sonnet 4.6 ($3/$15/MTok,
+	//                    $2/$10 intro through 2026-08-31)
 	// claude-opus-4.8  = heavy reasoning ($5/$25/MTok)
 	// claude-haiku-4.5 = low-latency, low-cost ($1/$5/MTok)
 	oauthProviderAnthropic: {
 		{Label: "Claude Fable 5", ModelID: "anthropic/claude-fable-5"},
-		{Label: "Claude Sonnet 4.6", ModelID: "anthropic/claude-sonnet-4.6"},
+		{Label: "Claude Sonnet 5", ModelID: "anthropic/claude-sonnet-5"},
 		{Label: "Claude Opus 4.8", ModelID: "anthropic/claude-opus-4.8"},
 		{Label: "Claude Haiku 4.5", ModelID: "anthropic/claude-haiku-4.5"},
 	},
@@ -86,9 +91,9 @@ var oauthProviderModelPresets = map[string][]oauthModelPreset{
 func defaultModelForProvider(provider string) string {
 	switch provider {
 	case oauthProviderOpenAI:
-		return "openai/gpt-5.5"
+		return "openai/gpt-5.6-sol"
 	case oauthProviderAnthropic:
-		return "anthropic/claude-sonnet-4.6" // sonnet is recommended production default
+		return "anthropic/claude-sonnet-5" // sonnet is recommended production default
 	case oauthProviderGoogleAntigravity:
 		return "antigravity/gemini-3-flash"
 	case oauthProviderGoogleGemini:

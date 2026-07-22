@@ -7,8 +7,8 @@ func TestDefaultModelForProvider(t *testing.T) {
 		provider string
 		want     string
 	}{
-		{oauthProviderOpenAI, "openai/gpt-5.5"},
-		{oauthProviderAnthropic, "anthropic/claude-sonnet-4.6"},
+		{oauthProviderOpenAI, "openai/gpt-5.6-sol"},
+		{oauthProviderAnthropic, "anthropic/claude-sonnet-5"},
 		{oauthProviderGoogleAntigravity, "antigravity/gemini-3-flash"},
 		{oauthProviderGoogleGemini, "gemini-code-assist/gemini-2.5-flash"},
 		{"unknown", ""},
