@@ -59,7 +59,15 @@ var oauthProviderModelPresets = map[string][]oauthModelPreset{
 	// Gemini CLI quota model (different API) — NOT valid here.
 	// Note: the exact ID set is rollout-dependent. If a chip 404s, re-check with
 	// fetchAvailableModels for the account and update the IDs here.
+	//
+	// Gemini 3.6 Flash tiers added 2026-07-22 (app added them to its picker) but
+	// NOT live-verified against fetchAvailableModels yet — IDs are a best guess
+	// following the 3.5 tier's naming/reuse pattern above. Re-check and fix if
+	// any of these three 404 in the app.
 	oauthProviderGoogleAntigravity: {
+		{Label: "Gemini 3.6 Flash (High)", ModelID: "antigravity/gemini-3.5-flash-agent"},
+		{Label: "Gemini 3.6 Flash (Medium)", ModelID: "antigravity/gemini-3.6-flash-low"},
+		{Label: "Gemini 3.6 Flash (Low)", ModelID: "antigravity/gemini-3.6-flash-extra-low"},
 		{Label: "Gemini 3 Flash", ModelID: "antigravity/gemini-3-flash"},
 		{Label: "Gemini 3.5 Flash (Medium)", ModelID: "antigravity/gemini-3.5-flash-low"},
 		{Label: "Gemini 3.5 Flash (High)", ModelID: "antigravity/gemini-3-flash-agent"},
