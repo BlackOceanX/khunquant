@@ -18,7 +18,6 @@ import (
 
 const (
 	supportedProvidersMsg = "supported providers: openai, anthropic, google-antigravity, antigravity, google-gemini, gemini-code-assist"
-	defaultAnthropicModel = "claude-sonnet-4.6"
 )
 
 func authLoginCmd(provider string, useDeviceCode bool, useOauth bool, noBrowser bool) error {
@@ -74,14 +73,14 @@ func authLoginOpenAI(useDeviceCode bool, noBrowser bool) error {
 		// If no openai in ModelList, add it
 		if !foundOpenAI {
 			appCfg.ModelList = append(appCfg.ModelList, config.ModelConfig{
-				ModelName:  "gpt-5.5",
-				Model:      "openai/gpt-5.5",
+				ModelName:  config.DefaultOpenAIModelName,
+				Model:      config.DefaultOpenAIModel,
 				AuthMethod: "oauth",
 			})
 		}
 
 		// Update default model to use OpenAI
-		appCfg.Agents.Defaults.ModelName = "gpt-5.5"
+		appCfg.Agents.Defaults.ModelName = config.DefaultOpenAIModelName
 
 		if err = config.SaveConfig(internal.GetConfigPath(), appCfg); err != nil {
 			return fmt.Errorf("could not update config: %w", err)
@@ -92,7 +91,7 @@ func authLoginOpenAI(useDeviceCode bool, noBrowser bool) error {
 	if cred.AccountID != "" {
 		fmt.Printf("Account: %s\n", cred.AccountID)
 	}
-	fmt.Println("Default model set to: gpt-5.5")
+	fmt.Printf("Default model set to: %s\n", config.DefaultOpenAIModelName)
 
 	return nil
 }
@@ -148,14 +147,14 @@ func authLoginGoogleAntigravity(noBrowser bool) error {
 		// If no antigravity in ModelList, add it
 		if !foundAntigravity {
 			appCfg.ModelList = append(appCfg.ModelList, config.ModelConfig{
-				ModelName:  "gemini-3-flash",
-				Model:      "antigravity/gemini-3-flash",
+				ModelName:  config.DefaultAntigravityModelName,
+				Model:      config.DefaultAntigravityModel,
 				AuthMethod: "oauth",
 			})
 		}
 
 		// Update default model
-		appCfg.Agents.Defaults.ModelName = "gemini-3-flash"
+		appCfg.Agents.Defaults.ModelName = config.DefaultAntigravityModelName
 
 		if err := config.SaveConfig(internal.GetConfigPath(), appCfg); err != nil {
 			fmt.Printf("Warning: could not update config: %v\n", err)
@@ -163,7 +162,7 @@ func authLoginGoogleAntigravity(noBrowser bool) error {
 	}
 
 	fmt.Println("\n✓ Google Antigravity login successful!")
-	fmt.Println("Default model set to: gemini-3-flash")
+	fmt.Printf("Default model set to: %s\n", config.DefaultAntigravityModelName)
 	fmt.Println("Try it: khunquant agent -m \"Hello world\"")
 
 	return nil
@@ -212,14 +211,14 @@ func authLoginGoogleGemini(noBrowser bool) error {
 		}
 		if !foundGemini {
 			appCfg.ModelList = append(appCfg.ModelList, config.ModelConfig{
-				ModelName:  "gemini-flash-codeassist",
-				Model:      "gemini-code-assist/gemini-2.5-flash",
+				ModelName:  config.DefaultGeminiModelName,
+				Model:      config.DefaultGeminiModel,
 				AuthMethod: "oauth",
 			})
 		}
 
 		if appCfg.Agents.Defaults.GetModelName() == "" {
-			appCfg.Agents.Defaults.ModelName = "gemini-flash-codeassist"
+			appCfg.Agents.Defaults.ModelName = config.DefaultGeminiModelName
 		}
 
 		if err := config.SaveConfig(internal.GetConfigPath(), appCfg); err != nil {
@@ -228,7 +227,7 @@ func authLoginGoogleGemini(noBrowser bool) error {
 	}
 
 	fmt.Println("\n✓ Google Gemini Code Assist login successful!")
-	fmt.Println("Model added: gemini-code-assist/gemini-2.5-flash")
+	fmt.Printf("Model added: %s\n", config.DefaultGeminiModel)
 	fmt.Println("Try it: khunquant agent -m \"Hello world\"")
 
 	return nil
@@ -289,13 +288,13 @@ func authLoginAnthropicSetupToken() error {
 		}
 		if !found {
 			appCfg.ModelList = append(appCfg.ModelList, config.ModelConfig{
-				ModelName:  defaultAnthropicModel,
-				Model:      "anthropic/" + defaultAnthropicModel,
+				ModelName:  config.DefaultAnthropicModelName,
+				Model:      config.DefaultAnthropicModel,
 				AuthMethod: "oauth",
 			})
 			// Only set default model if user has no default configured yet
 			if appCfg.Agents.Defaults.GetModelName() == "" {
-				appCfg.Agents.Defaults.ModelName = defaultAnthropicModel
+				appCfg.Agents.Defaults.ModelName = config.DefaultAnthropicModelName
 			}
 		}
 
@@ -366,11 +365,11 @@ func authLoginPasteToken(provider string) error {
 			}
 			if !found {
 				appCfg.ModelList = append(appCfg.ModelList, config.ModelConfig{
-					ModelName:  defaultAnthropicModel,
-					Model:      "anthropic/" + defaultAnthropicModel,
+					ModelName:  config.DefaultAnthropicModelName,
+					Model:      config.DefaultAnthropicModel,
 					AuthMethod: "token",
 				})
-				appCfg.Agents.Defaults.ModelName = defaultAnthropicModel
+				appCfg.Agents.Defaults.ModelName = config.DefaultAnthropicModelName
 			}
 		case "openai":
 			appCfg.Providers.OpenAI.AuthMethod = "token"
@@ -385,13 +384,13 @@ func authLoginPasteToken(provider string) error {
 			}
 			if !found {
 				appCfg.ModelList = append(appCfg.ModelList, config.ModelConfig{
-					ModelName:  "gpt-5.5",
-					Model:      "openai/gpt-5.5",
+					ModelName:  config.DefaultOpenAIModelName,
+					Model:      config.DefaultOpenAIModel,
 					AuthMethod: "token",
 				})
 			}
 			// Update default model
-			appCfg.Agents.Defaults.ModelName = "gpt-5.5"
+			appCfg.Agents.Defaults.ModelName = config.DefaultOpenAIModelName
 		}
 		if err := config.SaveConfig(internal.GetConfigPath(), appCfg); err != nil {
 			return fmt.Errorf("could not update config: %w", err)

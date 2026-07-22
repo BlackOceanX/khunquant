@@ -16,19 +16,21 @@ func NewModelCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "model [model_name]",
 		Short: "Show or change the default model",
-		Long: `Show or change the default model configuration.
+		Long: fmt.Sprintf(`Show or change the default model configuration.
 
 If no argument is provided, shows the current default model.
 If a model name is provided, sets it as the default model.
 
 Examples:
-  khunquant model                    # Show current default model
-  khunquant model gpt-5.2           # Set gpt-5.2 as default
-  khunquant model claude-sonnet-4.6 # Set claude-sonnet-4.6 as default
-  khunquant model local-model       # Set local VLLM server as default
+  khunquant model                # Show current default model
+  khunquant model %s   # Set %s as default
+  khunquant model %s   # Set %s as default
+  khunquant model local-model    # Set local VLLM server as default
 
 Note: 'local-model' is a special value for using a local VLLM server
 (running at localhost:8000 by default) which does not require an API key.`,
+			config.DefaultOpenAIModelName, config.DefaultOpenAIModelName,
+			config.DefaultAnthropicModelName, config.DefaultAnthropicModelName),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath := internal.GetConfigPath()

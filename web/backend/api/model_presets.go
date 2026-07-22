@@ -1,5 +1,7 @@
 package api
 
+import "github.com/cryptoquantumwave/khunquant/pkg/config"
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Credential-card model presets
 //
@@ -32,7 +34,7 @@ var oauthProviderModelPresets = map[string][]oauthModelPreset{
 	// gpt-5.6-terra = balanced intelligence/cost, $2.50/$15 per MTok
 	// gpt-5.6-luna  = fast, cheap, high-volume, $1/$6 per MTok
 	oauthProviderOpenAI: {
-		{Label: "GPT-5.6 Sol", ModelID: "openai/gpt-5.6-sol"},
+		{Label: "GPT-5.6 Sol", ModelID: config.DefaultOpenAIModel},
 		{Label: "GPT-5.6 Terra", ModelID: "openai/gpt-5.6-terra"},
 		{Label: "GPT-5.6 Luna", ModelID: "openai/gpt-5.6-luna"},
 	},
@@ -45,7 +47,7 @@ var oauthProviderModelPresets = map[string][]oauthModelPreset{
 	// claude-haiku-4.5 = low-latency, low-cost ($1/$5/MTok)
 	oauthProviderAnthropic: {
 		{Label: "Claude Fable 5", ModelID: "anthropic/claude-fable-5"},
-		{Label: "Claude Sonnet 5", ModelID: "anthropic/claude-sonnet-5"},
+		{Label: "Claude Sonnet 5", ModelID: config.DefaultAnthropicModel},
 		{Label: "Claude Opus 4.8", ModelID: "anthropic/claude-opus-4.8"},
 		{Label: "Claude Haiku 4.5", ModelID: "anthropic/claude-haiku-4.5"},
 	},
@@ -73,7 +75,7 @@ var oauthProviderModelPresets = map[string][]oauthModelPreset{
 	// High/Medium/Low model IDs, so we only list one chip for it.
 	oauthProviderGoogleAntigravity: {
 		{Label: "Gemini 3.6 Flash", ModelID: "antigravity/gemini-3.6-flash-tiered"},
-		{Label: "Gemini 3 Flash", ModelID: "antigravity/gemini-3-flash"},
+		{Label: "Gemini 3 Flash", ModelID: config.DefaultAntigravityModel},
 		{Label: "Gemini 3.5 Flash (Medium)", ModelID: "antigravity/gemini-3.5-flash-low"},
 		{Label: "Gemini 3.5 Flash (High)", ModelID: "antigravity/gemini-3-flash-agent"},
 		{Label: "Gemini 3.5 Flash (Low)", ModelID: "antigravity/gemini-3.5-flash-extra-low"},
@@ -91,13 +93,13 @@ var oauthProviderModelPresets = map[string][]oauthModelPreset{
 func defaultModelForProvider(provider string) string {
 	switch provider {
 	case oauthProviderOpenAI:
-		return "openai/gpt-5.6-sol"
+		return config.DefaultOpenAIModel
 	case oauthProviderAnthropic:
-		return "anthropic/claude-sonnet-5" // sonnet is recommended production default
+		return config.DefaultAnthropicModel // sonnet is recommended production default
 	case oauthProviderGoogleAntigravity:
-		return "antigravity/gemini-3-flash"
+		return config.DefaultAntigravityModel
 	case oauthProviderGoogleGemini:
-		return "gemini-code-assist/gemini-2.5-flash"
+		return config.DefaultGeminiModel
 	default:
 		return ""
 	}

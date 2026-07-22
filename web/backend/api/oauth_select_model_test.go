@@ -79,8 +79,8 @@ func TestDefaultModelConfigForProvider(t *testing.T) {
 		wantModel  string
 		wantName   string
 	}{
-		{oauthProviderOpenAI, "oauth", "openai/gpt-5.5", "gpt-5.5"},
-		{oauthProviderAnthropic, "token", "anthropic/claude-sonnet-4.6", "claude-sonnet-4.6"},
+		{oauthProviderOpenAI, "oauth", "openai/gpt-5.6-sol", "gpt-5.6-sol"},
+		{oauthProviderAnthropic, "token", "anthropic/claude-sonnet-5", "claude-sonnet-5"},
 		{oauthProviderGoogleAntigravity, "oauth", "antigravity/gemini-3-flash", "gemini-3-flash"},
 	}
 	for _, tc := range cases {

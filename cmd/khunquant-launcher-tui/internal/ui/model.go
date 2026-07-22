@@ -49,7 +49,7 @@ func (s *appState) modelMenu() tview.Primitive {
 			Action: func() {
 				newName := s.nextAvailableModelName("new-model")
 				s.addModel(
-					khunquantconfig.ModelConfig{ModelName: newName, Model: "openai/gpt-5.4"},
+					khunquantconfig.ModelConfig{ModelName: newName, Model: khunquantconfig.DefaultOpenAIModel},
 				)
 				s.push(
 					fmt.Sprintf("model-%d", len(s.config.ModelList)-1),
@@ -291,7 +291,7 @@ func refreshModelMenuFromState(menu *Menu, s *appState) {
 			Action: func() {
 				newName := s.nextAvailableModelName("new-model")
 				s.addModel(
-					khunquantconfig.ModelConfig{ModelName: newName, Model: "openai/gpt-5.4"},
+					khunquantconfig.ModelConfig{ModelName: newName, Model: khunquantconfig.DefaultOpenAIModel},
 				)
 				s.push(fmt.Sprintf("model-%d", len(s.config.ModelList)-1), s.modelForm(len(s.config.ModelList)-1))
 			},
